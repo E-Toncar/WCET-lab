@@ -1,0 +1,243 @@
+<title>T-CREST Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="A Patmos-style processor simulator with platin-style WCET analysis.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/*CSS*/
+/* T-CREST Lab uses a cobalt accent to tell it apart from SWEET Lab */
+:root { --accent: #3b55c0; --accent-ink: #ffffff; --accent-soft: #e2e7fa; --meas: #8a63c4; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --accent: #8ea2f2; --accent-ink: #10152a; --accent-soft: #232c4d; --meas: #c3a2f0; } }
+:root[data-theme="dark"] { --accent: #8ea2f2; --accent-ink: #10152a; --accent-soft: #232c4d; --meas: #c3a2f0; }
+.compare { padding: 14px; border-bottom: 1px solid var(--line); }
+.compare .row { display: grid; grid-template-columns: 7.5em minmax(0, 1fr) 5.5em; gap: 10px; align-items: center; font-size: 13px; margin: 4px 0; }
+.compare .track { height: 14px; background: var(--sunken); border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+.compare .track i { display: block; height: 100%; }
+.compare .v { text-align: right; font: 600 13px var(--f-mono); font-variant-numeric: tabular-nums; }
+.cfgopts { padding: 10px 14px; border-top: 1px solid var(--line); }
+.cfgopts summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+.cfgopts .opts { margin-top: 10px; }
+.tr td { font-family: var(--f-mono); font-size: 12px; white-space: nowrap; }
+.tr td.note { white-space: normal; font-family: var(--f-body); color: var(--muted); min-width: 16em; }
+.regs { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 4px; font: 12.5px var(--f-mono); }
+.regs span { background: var(--sunken); border: 1px solid var(--line); border-radius: 3px; padding: 2px 6px; }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>T-CREST <span>Lab</span></h1>
+    <p>Run Patmos-style assembly on a cycle-level model of the processor, then compare the measured time with a static WCET bound computed the way platin does: per-block costs, loop bounds and an IPET linear program.</p>
+    <nav><a href="sweet.html">← SWEET Lab</a></nav>
+  </header>
+
+  <div class="grid">
+    <section class="panel" aria-label="Program">
+      <div class="ph">
+        <label class="ctl">Example
+          <select id="ex"></select>
+        </label>
+        <span style="flex:1"></span>
+        <button id="run" type="button">Run and analyse</button>
+      </div>
+      <p class="blurb" id="blurb"></p>
+      <div class="editor"><textarea id="src" class="code" spellcheck="false" aria-label="Patmos-style assembly"></textarea></div>
+      <details class="cfgopts" open>
+        <summary>Hardware configuration</summary>
+        <div class="opts">
+          <label class="ctl">Main memory latency (cycles)<input id="memLatency" type="number" min="1" max="200"></label>
+          <label class="ctl">Data cache lines<input id="dcacheSets" type="number" min="1" max="256"></label>
+          <label class="ctl">Method cache blocks<input id="mcBlocks" type="number" min="1" max="256"></label>
+          <label class="ctl">Words per M$ block<input id="mcBlockWords" type="number" min="1" max="64"></label>
+          <label class="ctl">Stack cache (words)<input id="scWords" type="number" min="1" max="1024"></label>
+        </div>
+      </details>
+    </section>
+
+    <section class="panel" aria-label="Results">
+      <div id="errbox"></div>
+      <div class="compare" id="compare"></div>
+      <div class="stats" id="stats"></div>
+      <div class="tabs" role="tablist" id="tabs"></div>
+      <div class="tabpane" id="pane"></div>
+    </section>
+  </div>
+
+  <footer class="f">A teaching model written for this lab. Instruction syntax, latencies and cache models follow the ideas of Patmos and platin from the T-CREST project in simplified form; cycle counts are not those of the real hardware.</footer>
+</div>
+
+<script>
+/*CORE*/
+</script>
+<script>
+/*EXAMPLES*/
+</script>
+<script>
+(function () {
+  'use strict';
+  const EX = window.TCREST_EXAMPLES;
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const KEYS = ['memLatency', 'dcacheSets', 'mcBlocks', 'mcBlockWords', 'scWords'];
+  const TABS = [['blocks', 'Blocks and costs'], ['ipet', 'IPET problem'], ['trace', 'Pipeline trace'], ['state', 'Final state'], ['isa', 'Instruction set'], ['about', 'How T-CREST works']];
+  let tab = 'blocks', last = null;
+  try { const t = localStorage.getItem('tcrest-tab'); if (TABS.some((x) => x[0] === t)) tab = t; } catch (e) {}
+  KEYS.forEach((k) => { $(k).value = TcrestCore.DEFAULTS[k]; $(k).addEventListener('change', run); });
+  EX.forEach((e, i) => { const o = document.createElement('option'); o.value = i; o.textContent = e.title; $('ex').appendChild(o); });
+  function load(i) { $('src').value = EX[i].src; $('blurb').textContent = EX[i].blurb; run(); }
+  $('ex').addEventListener('change', () => load(+$('ex').value));
+  $('run').addEventListener('click', run);
+  $('src').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); run(); }
+    if (e.key === 'Tab') { e.preventDefault(); const t = e.target, s = t.selectionStart; t.value = t.value.slice(0, s) + '        ' + t.value.slice(t.selectionEnd); t.selectionStart = t.selectionEnd = s + 8; }
+  });
+  function renderTabs() {
+    $('tabs').innerHTML = TABS.map(([k, n]) => '<button type="button" role="tab" id="tab-' + k + '" aria-selected="' + (k === tab) + '">' + n + '</button>').join('');
+    TABS.forEach(([k]) => $('tab-' + k).addEventListener('click', () => { tab = k; try { localStorage.setItem('tcrest-tab', k); } catch (e) {} renderTabs(); renderPane(); }));
+  }
+  function run() {
+    $('errbox').innerHTML = '';
+    const T = {};
+    KEYS.forEach((k) => { const v = parseInt($(k).value, 10); T[k] = isFinite(v) && v > 0 ? v : TcrestCore.DEFAULTS[k]; });
+    try { last = TcrestCore.analyze($('src').value, T); }
+    catch (e) { last = null; $('errbox').innerHTML = '<div class="err"><strong>Cannot analyse:</strong> ' + esc(e.message) + '</div>'; }
+    renderSummary(); renderTabs(); renderPane();
+  }
+  const fmt = (x) => (Math.round(x * 100) / 100).toLocaleString('en');
+  function renderSummary() {
+    if (!last) { $('compare').innerHTML = ''; $('stats').innerHTML = ''; return; }
+    const w = last.wc.wcet, m = last.sim ? last.sim.stats.cycles : null;
+    const top = Math.max(w, m || 0, 1);
+    const safe = m == null || w >= m;
+    const ratio = m ? w / m : null;
+    let html = '<div class="row"><span>WCET bound</span><span class="track"><i style="width:' + (100 * w / top) + '%;background:var(--accent)"></i></span><span class="v">' + fmt(w) + '</span></div>';
+    html += '<div class="row"><span>Measured run</span><span class="track"><i style="width:' + (100 * (m || 0) / top) + '%;background:var(--meas)"></i></span><span class="v">' + (m == null ? '—' : fmt(m)) + '</span></div>';
+    let verdict = '';
+    if (last.simError) verdict = '<span class="chip bad">Simulation failed</span> ' + esc(last.simError);
+    else if (!safe) verdict = '<span class="chip bad">Unsafe bound</span> The measured run is longer than the bound. A flow fact is wrong.';
+    else if (w === m) verdict = '<span class="chip good">Exact</span> The bound equals the measured time: this program has a single execution time.';
+    else verdict = '<span class="chip warn">Overestimate ' + fmt((ratio - 1) * 100) + '%</span> The bound is safe. The gap comes from assumptions the analysis must make for all inputs and cache states.';
+    html += '<p style="margin:8px 0 0;font-size:14px">' + verdict + '</p>';
+    if (last.sim) for (const wmsg of last.sim.warnings) html += '<div class="note" style="margin-top:10px">' + esc(wmsg) + '</div>';
+    $('compare').innerHTML = html;
+    const s = last.sim ? last.sim.stats : null;
+    const items = [
+      ['Bundles issued', s ? s.bundles.toLocaleString('en') : '—', s ? s.stalls + ' load-use stall' + (s.stalls === 1 ? '' : 's') : ''],
+      ['Data cache', s ? s.dcHits + ' hit / ' + s.dcMiss + ' miss' : '—', 'analysis: every lwc misses'],
+      ['Method cache', s ? s.mcMiss + ' miss' : '—', last.mc.persistent ? 'all ' + last.mc.totalMcBlocks + ' blocks fit: one miss per function' : 'code needs ' + last.mc.totalMcBlocks + ' blocks: every call misses'],
+      ['Stack cache', s ? (s.scSpill ? s.scSpill + ' words spilled' : 'no spills') : '—', 'max depth ' + last.mc.maxStack + ' of ' + last.T.scWords + ' words'],
+      ['IPET', last.wc.nVars + ' variables', last.wc.nRows + ' rows, ' + (last.wc.integral ? 'integral solution' : 'fractional LP solution')],
+    ];
+    $('stats').innerHTML = items.map(([k, v, sub]) => '<div class="stat"><div class="k">' + k + '</div><div class="v" style="font-size:18px">' + v + '</div><div class="s">' + sub + '</div></div>').join('');
+  }
+  function renderPane() {
+    const P = $('pane');
+    if (tab === 'about') { P.innerHTML = ABOUT; return; }
+    if (tab === 'isa') { P.innerHTML = ISA; return; }
+    if (!last) { P.innerHTML = '<p class="prose">Fix the error in the program to see results here.</p>'; return; }
+    const { prog, cfg, wc, sim, loops } = last;
+    if (tab === 'blocks') {
+      const contrib = cfg.blocks.map((b, i) => wc.counts[i] * b.cost);
+      const maxC = Math.max(1, ...contrib);
+      let h = '<p class="prose" style="margin-top:0">Each basic block gets a worst-case cost from the low-level model. IPET then picks execution counts that maximise the total time while respecting the control flow and the loop bounds. "Measured" counts come from the simulator run.</p>';
+      h += '<div class="tscroll"><table class="t"><thead><tr><th>Block</th><th>Function</th><th>Bundles</th><th class="n">Cost</th><th>Cost breakdown</th><th class="n">WCET count</th><th class="n">Measured</th><th>Share of bound</th></tr></thead><tbody>';
+      cfg.blocks.forEach((b, i) => {
+        const p = b.parts;
+        const parts = ['issue ' + p.issue, p.memory ? 'memory ' + p.memory : '', p.stall ? 'stall ' + p.stall : '', p.stack ? 'stack cache ' + p.stack : ''].filter(Boolean).join(' · ');
+        const L = b.loop != null ? loops[b.loop] : null;
+        const diff = sim && Math.abs(sim.counts[i] - wc.counts[i]) > 1e-6;
+        h += '<tr><td><code>' + esc(b.name) + '</code>' + (L ? ' <span class="chip">loop ≤ ' + L.bound + '</span>' : '') + '</td><td>' + esc(prog.funcs[b.fn].name) + '</td><td class="mono">' + (b.end - b.start) + '</td><td class="n">' + b.cost + '</td><td>' + parts + '</td><td class="n">' + fmt(wc.counts[i]) + '</td><td class="n"' + (diff ? ' style="color:var(--warn);font-weight:600"' : '') + '>' + (sim ? sim.counts[i] : '—') + '</td><td><div class="bar"><i style="width:' + (100 * contrib[i] / maxC) + '%"></i></div></td></tr>';
+      });
+      h += '</tbody></table></div>';
+      const ce = cfg.edges.filter((e) => e.cost);
+      if (ce.length || wc.constant) {
+        h += '<h4 class="eyebrow" style="margin:18px 0 6px">Costs on edges and constants</h4><div class="tscroll"><table class="t"><thead><tr><th>Item</th><th>Reason</th><th class="n">Cost</th><th class="n">WCET count</th></tr></thead><tbody>';
+        for (const e of ce) {
+          const why = Object.entries(e.parts).map(([k, v]) => ({ branch: 'non-delayed branch taken', callret: 'call + return (3 + 3)', methodCache: 'method cache misses on call and return' }[k] + ' ' + v)).join(', ');
+          h += '<tr><td><code>x' + e.id + ': BB' + e.from + ' → ' + (e.to == null ? 'exit' : 'BB' + e.to) + '</code></td><td>' + why + '</td><td class="n">' + e.cost + '</td><td class="n">' + fmt(wc.edgeCounts[e.id]) + '</td></tr>';
+        }
+        if (wc.constant) h += '<tr><td>constant</td><td>method cache loads: ' + esc(wc.constParts.join(', ')) + '</td><td class="n">' + wc.constant + '</td><td class="n">1</td></tr>';
+        h += '</tbody></table></div>';
+      }
+      P.innerHTML = h;
+    } else if (tab === 'ipet') {
+      P.innerHTML = '<div class="prose" style="margin-top:0"><p>platin writes the WCET problem as an integer linear program. Each variable <code>xN</code> counts how often a CFG edge is taken and <code>e_f</code> counts entries into function f. The bound is the maximum of the objective subject to these constraints. This lab solves the LP relaxation with the simplex method; its optimum is a safe upper bound on the ILP optimum, and for these programs it is integral.</p></div>' +
+        '<h4 class="eyebrow" style="margin:12px 0 6px">Objective (maximise)</h4><pre class="out">' + esc(wc.objective.join(' + ') + (wc.constant ? ' + ' + wc.constant : '')) + '</pre>' +
+        '<h4 class="eyebrow" style="margin:14px 0 6px">Constraints</h4><pre class="out">' + esc(wc.human.join('\n')) + '</pre>' +
+        '<h4 class="eyebrow" style="margin:14px 0 6px">Solution</h4><pre class="out">' + esc('WCET bound = ' + fmt(wc.lp) + ' (LP)' + (wc.constant ? ' + ' + wc.constant + ' (constant)' : '') + ' = ' + fmt(wc.wcet) + ' cycles\n' + cfg.edges.map((e) => 'x' + e.id + ' (BB' + e.from + ' → ' + (e.to == null ? 'exit' : 'BB' + e.to) + ', ' + e.kind + ') = ' + fmt(wc.edgeCounts[e.id])).join('\n')) + '</pre>';
+    } else if (tab === 'trace') {
+      if (!sim) { P.innerHTML = '<div class="err">' + esc(last.simError) + '</div>'; return; }
+      P.innerHTML = '<p class="prose" style="margin-top:0">The first ' + sim.trace.length + ' bundles of the run. One bundle issues per cycle; extra cycles come from memory, stalls and control flow. Predicated-off instructions still occupy their slot.</p><div class="tscroll"><table class="t tr"><thead><tr><th class="n">Cycle</th><th class="n">PC</th><th>Block</th><th>Bundle</th><th class="n">+cyc</th><th>Events</th></tr></thead><tbody>' +
+        sim.trace.map((t) => '<tr><td class="n">' + t.cycle + '</td><td class="n">' + t.pc + '</td><td>BB' + t.block + '</td><td>' + esc(t.text) + '</td><td class="n">' + t.cyc + '</td><td class="note">' + esc(t.note) + '</td></tr>').join('') + '</tbody></table></div>';
+    } else if (tab === 'state') {
+      if (!sim) { P.innerHTML = '<div class="err">' + esc(last.simError) + '</div>'; return; }
+      const regs = sim.regs.map((v, i) => (v !== 0 || i < 16 ? '<span>r' + i + ' = ' + v + '</span>' : '')).join('');
+      const preds = sim.preds.map((v, i) => '<span>p' + i + ' = ' + (v ? 1 : 0) + '</span>').join('');
+      const lp = loops.map((L, i) => '<tr><td><code>' + esc(L.name) + '</code></td><td>' + esc(L.fn) + '</td><td class="n">' + L.bound + '</td><td class="n">' + sim.loopMax[i] + '</td><td>' + (sim.loopMax[i] > L.bound ? '<span class="chip bad">violated</span>' : sim.loopMax[i] === L.bound ? '<span class="chip good">tight</span>' : '<span class="chip warn">not reached</span>') + '</td></tr>').join('');
+      P.innerHTML = '<h4 class="eyebrow" style="margin:0 0 6px">Registers</h4><div class="regs">' + regs + '</div><h4 class="eyebrow" style="margin:14px 0 6px">Predicates</h4><div class="regs">' + preds + '</div>' +
+        (lp ? '<h4 class="eyebrow" style="margin:14px 0 6px">Loop bounds: annotation vs. observed</h4><div class="tscroll"><table class="t"><thead><tr><th>Loop</th><th>Function</th><th class="n">.loopbound</th><th class="n">Most iterations seen</th><th></th></tr></thead><tbody>' + lp + '</tbody></table></div>' : '');
+    }
+  }
+  const ISA = `<div class="prose">
+<h3>Program structure</h3>
+<p>Code lives in functions that start with <code>.func name</code>; execution starts in <code>main</code>, which ends with <code>halt</code>. Other functions end with <code>retnd</code>. Comments start with <code>#</code>. Every instruction is one 32-bit word, which sets the function size seen by the method cache.</p>
+<table class="t"><thead><tr><th>Directive</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><code>.loopbound N</code></td><td>Put directly before the first instruction of a loop header: at most N back-edge traversals per loop entry. Corresponds to <code>#pragma loopbound min 0 max N</code> in the Patmos compiler.</td></tr>
+<tr><td><code>.mem A v0 v1 …</code></td><td>Initial words in main memory from address A (word addresses).</td></tr>
+<tr><td><code>.spm A v0 v1 …</code></td><td>Initial words in the data scratchpad.</td></tr>
+</tbody></table>
+<h3>Instructions</h3>
+<p>Any instruction can be guarded by a predicate: <code>(p1) add r1 = r2, r3</code> or <code>(!p1) …</code>. <code>p0</code> is always true and <code>r0</code> is always 0. Two instructions can share a bundle: <code>{ add r1 = r1, r2 ; sub r3 = r3, r4 }</code>.</p>
+<table class="t"><thead><tr><th>Form</th><th>Effect and timing</th></tr></thead><tbody>
+<tr><td><code>add sub and or xor sl sr mul</code> <code>rd = rs, rt</code></td><td>ALU operation; <code>addi</code>, <code>subi</code> … take an immediate. 1 cycle.</td></tr>
+<tr><td><code>li rd = imm</code>, <code>mov rd = rs</code></td><td>Load immediate, copy (pseudo-instructions).</td></tr>
+<tr><td><code>cmpeq cmpneq cmplt cmple cmpult</code> <code>pd = rs, rt</code></td><td>Compare into a predicate; <code>cmpilt pd = rs, imm</code> etc. for immediates.</td></tr>
+<tr><td><code>pand por pxor pmov pnot</code></td><td>Predicate logic, e.g. <code>pand p3 = p1, !p2</code>.</td></tr>
+<tr><td><code>lwc rd = [rs + off]</code></td><td>Load through the direct-mapped data cache. Hit: no extra cycles. Miss: + memory latency. Static analysis assumes a miss.</td></tr>
+<tr><td><code>lwm</code> / <code>lwl</code> / <code>lws</code></td><td>Load bypassing caches from main memory (+ latency), from the scratchpad (no extra cycles), or from the stack cache (no extra cycles).</td></tr>
+<tr><td><code>swc swm swl sws [rs + off] = rt</code></td><td>Stores. Main-memory and data-cache stores are write-through and cost the memory latency.</td></tr>
+<tr><td colspan="2">A loaded register used by the very next bundle causes a 1-cycle stall.</td></tr>
+<tr><td><code>br label</code></td><td>Delayed branch: the two following bundles (delay slots) always execute, then control moves. No penalty.</td></tr>
+<tr><td><code>brnd label</code></td><td>Non-delayed branch: +2 cycles when taken.</td></tr>
+<tr><td><code>callnd f</code>, <code>retnd</code></td><td>Non-delayed call and return: +3 cycles each, plus a method cache lookup of the target function (miss = latency + function size in words).</td></tr>
+<tr><td><code>sres n</code>, <code>sfree n</code></td><td>Reserve and free n words of stack cache. If the cache overflows, words spill to memory and are filled back later.</td></tr>
+<tr><td><code>nop</code>, <code>halt</code></td><td>Do nothing; stop the program.</td></tr>
+</tbody></table>
+</div>`;
+  const ABOUT = `<div class="prose">
+<h3>The T-CREST idea</h3>
+<p>T-CREST was an EU project that built a whole time-predictable multicore platform as open source: the <b>Patmos</b> processor, a network-on-chip, a memory controller, a WCET-aware compiler based on LLVM, and WCET analysis support through the <b>platin</b> toolkit (which also integrates with AbsInt's aiT). Instead of modelling a complex processor in the analysis, the hardware is designed so that the analysis becomes simple and the bound tight.</p>
+<h3>Patmos features you can try here</h3>
+<table class="t"><thead><tr><th>Feature</th><th>Why it helps WCET analysis</th><th>Example</th></tr></thead><tbody>
+<tr><td>Statically scheduled, dual issue</td><td>No dynamic reordering; the time of a bundle sequence follows from the code.</td><td>Single-path code</td></tr>
+<tr><td>Full predication</td><td>Enables <b>single-path</b> code: both sides of a decision are issued, so time does not depend on data.</td><td>Single-path code</td></tr>
+<tr><td>Delayed branches</td><td>Branch cost is fixed and visible in the code.</td><td>all examples</td></tr>
+<tr><td>Method cache</td><td>Caches whole functions; misses happen only at calls and returns, so the analysis only looks at the call graph.</td><td>Method and stack cache</td></tr>
+<tr><td>Stack cache</td><td>Stack data gets its own cache with spills only at <code>sres</code>; spill costs follow from call depth.</td><td>Method and stack cache</td></tr>
+<tr><td>Scratchpad</td><td>Software-managed memory with fixed latency: always predictable.</td><td>Scratchpad vs. data cache</td></tr>
+<tr><td>Split data caches</td><td>The analysis of the general data cache does not have to deal with stack or static data.</td><td>Scratchpad vs. data cache</td></tr>
+</tbody></table>
+<h3>How the WCET bound is computed</h3>
+<ol>
+<li><b>Control-flow graph.</b> Code is cut into basic blocks at labels, after branches (with their delay slots), calls and returns.</li>
+<li><b>Loops and flow facts.</b> Dominators identify natural loops; each must carry a <code>.loopbound</code>. In T-CREST these come from source pragmas and compiler analyses, carried to machine code in PML files, or from a flow-analysis tool such as SWEET.</li>
+<li><b>Low-level analysis.</b> Every block gets a worst-case cost: one cycle per bundle, memory latencies, load-use stalls, and stack-cache spills if the call depth can exceed the cache. Taken non-delayed branches and calls put their cost on edges.</li>
+<li><b>Cache analysis.</b> Data-cache loads are classified as always-miss, the simplest safe choice. The method cache uses a simple persistence argument: if all reachable code fits, each function misses at most once; otherwise every call and return is charged a miss.</li>
+<li><b>IPET.</b> Block and edge costs, flow conservation and loop bounds form a linear program; its maximum is the WCET bound.</li>
+</ol>
+<h3>What is simplified here</h3>
+<ul>
+<li>The instruction syntax is close to Patmos assembly but not identical; delayed calls and returns, the full special-register set and multi-cycle multiply are left out.</li>
+<li>Latencies are configurable round numbers, not those of a real FPGA build. The real data-cache and method-cache analyses are more precise.</li>
+<li>Only one core; the network-on-chip and the memory arbiter are not modelled.</li>
+</ul>
+<h3>Next steps with the real tools</h3>
+<ul>
+<li>All T-CREST repositories, including Patmos, the compiler and the build scripts: <a href="https://github.com/t-crest" target="_blank" rel="noopener">github.com/t-crest</a></li>
+<li>platin: <a href="https://github.com/t-crest/platin" target="_blank" rel="noopener">github.com/t-crest/platin</a></li>
+<li>M. Schoeberl et al.: <em>Patmos: a time-predictable microprocessor</em>, Real-Time Systems 54(2), 2018.</li>
+<li>E. J. Maroun et al.: <em>The Platin multi-target worst-case analysis tool</em>, WCET workshop 2024.</li>
+</ul>
+</div>`;
+  load(0);
+})();
+</script>

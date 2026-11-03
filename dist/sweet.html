@@ -1,0 +1,1036 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+</head>
+<body>
+<title>SWEET Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Flow analysis by abstract execution, modelled on the SWEET tool.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a two-pane workbench. Program on the left, analysis results on the right; stacks on phones. */
+:root {
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --sunken: #f6f8fa;
+  --ink: #18212c;
+  --muted: #586577;
+  --line: #d5dce4;
+  --accent: #13707b;
+  --accent-ink: #ffffff;
+  --accent-soft: #dcefef;
+  --good: #2b7a4b;
+  --good-soft: #e1f2e7;
+  --warn: #9a5f0c;
+  --warn-soft: #fbefd9;
+  --bad: #b02a1f;
+  --bad-soft: #fbe4e1;
+  --code-ink: #23303e;
+  --f-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --r: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161c; --surface: #19202a; --sunken: #141a22; --ink: #e2e8ee; --muted: #95a3b3; --line: #2b3542;
+    --accent: #4fb8c1; --accent-ink: #0d1a1c; --accent-soft: #17343a;
+    --good: #6cc792; --good-soft: #163324; --warn: #e3a64a; --warn-soft: #3a2c14; --bad: #f0857a; --bad-soft: #3d1d1a;
+    --code-ink: #d6dee7; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161c; --surface: #19202a; --sunken: #141a22; --ink: #e2e8ee; --muted: #95a3b3; --line: #2b3542;
+  --accent: #4fb8c1; --accent-ink: #0d1a1c; --accent-soft: #17343a;
+  --good: #6cc792; --good-soft: #163324; --warn: #e3a64a; --warn-soft: #3a2c14; --bad: #f0857a; --bad-soft: #3d1d1a;
+  --code-ink: #d6dee7; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.5; }
+a { color: var(--accent); }
+.wrap { max-width: 1440px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 48px; }
+header.top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 20px; padding-block: 22px 16px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+header.top h1 { font-family: var(--f-display); font-weight: 600; font-size: 28px; letter-spacing: -0.01em; margin: 0; }
+header.top h1 span { color: var(--accent); }
+header.top p { margin: 0; color: var(--muted); max-width: 70ch; flex: 1 1 360px; }
+header.top nav { display: flex; gap: 14px; font-size: 14px; }
+.grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 18px; align-items: start; }
+@media (max-width: 960px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); min-width: 0; }
+.panel > .ph { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.panel > .pb { padding: 14px; }
+.eyebrow { font-family: var(--f-display); font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+label.ctl { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+select, input[type=number] { font: 14px var(--f-body); color: var(--ink); background: var(--sunken); border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; min-width: 0; }
+input[type=number] { width: 6.5em; font-family: var(--f-mono); }
+button { font: 600 14px var(--f-body); border-radius: 4px; padding: 7px 14px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+button.ghost { background: transparent; color: var(--accent); }
+button:hover { filter: brightness(1.08); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.editor { position: relative; }
+textarea.code { display: block; width: 100%; min-height: 460px; resize: vertical; border: 0; border-radius: 0 0 var(--r) var(--r); background: var(--sunken); color: var(--code-ink); font: 13.5px/1.55 var(--f-mono); padding: 12px 14px; tab-size: 4; white-space: pre; overflow: auto; }
+textarea.code:focus { outline: none; box-shadow: inset 0 0 0 2px var(--accent-soft); }
+.blurb { font-size: 14px; color: var(--muted); padding: 10px 14px; border-bottom: 1px solid var(--line); margin: 0; }
+.err { margin: 12px 14px; padding: 10px 12px; border-left: 3px solid var(--bad); background: var(--bad-soft); color: var(--ink); font-size: 14px; border-radius: 0 4px 4px 0; }
+.note { padding: 10px 12px; border-left: 3px solid var(--warn); background: var(--warn-soft); font-size: 14px; border-radius: 0 4px 4px 0; margin: 0 0 12px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); }
+.stat { background: var(--surface); padding: 10px 14px; min-width: 0; }
+.stat .k { font-size: 12px; color: var(--muted); }
+.stat .v { font: 600 22px var(--f-display); font-variant-numeric: tabular-nums; }
+.stat .s { font-size: 12px; color: var(--muted); }
+.tabs { display: flex; gap: 2px; overflow-x: auto; padding: 0 8px; border-bottom: 1px solid var(--line); }
+.tabs button { background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--muted); padding: 10px 10px 8px; white-space: nowrap; font-weight: 500; }
+.tabs button[aria-selected=true] { color: var(--ink); border-bottom-color: var(--accent); }
+.tabpane { padding: 14px; min-width: 0; }
+pre.out { margin: 0; font: 12.5px/1.55 var(--f-mono); color: var(--code-ink); background: var(--sunken); border: 1px solid var(--line); border-radius: 4px; padding: 12px; overflow-x: auto; white-space: pre; }
+.tscroll { overflow-x: auto; }
+table.t { border-collapse: collapse; width: 100%; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+table.t th { text-align: left; font-weight: 600; font-size: 12px; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.t td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.t td.n, table.t th.n { text-align: right; }
+table.t code, .mono { font-family: var(--f-mono); font-size: 12.5px; }
+.chip { display: inline-block; font: 600 12px var(--f-body); padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--ink); white-space: nowrap; }
+.chip.good { background: var(--good-soft); color: var(--good); }
+.chip.warn { background: var(--warn-soft); color: var(--warn); }
+.chip.bad { background: var(--bad-soft); color: var(--bad); }
+.prose { max-width: 72ch; }
+.prose h3 { font-family: var(--f-display); font-size: 18px; margin: 22px 0 6px; text-wrap: balance; }
+.prose h3:first-child { margin-top: 0; }
+.prose p, .prose li { color: var(--ink); }
+.prose code { font-family: var(--f-mono); font-size: 13px; background: var(--sunken); padding: 0 4px; border-radius: 3px; }
+.prose table.t { margin: 8px 0 14px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+.bb { border: 1px solid var(--line); border-radius: 4px; background: var(--sunken); min-width: 0; }
+.bb .h { display: flex; justify-content: space-between; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line); font: 600 13px var(--f-mono); }
+.bb .h small { font: 12px var(--f-body); color: var(--muted); }
+.bb .c { padding: 6px 10px; font: 12.5px/1.55 var(--f-mono); color: var(--code-ink); overflow-x: auto; white-space: pre; }
+.bb .f { padding: 6px 10px; border-top: 1px dashed var(--line); font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.bb.dead { border-color: var(--bad); }
+.bb.hot { border-color: var(--accent); }
+.bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; min-width: 60px; }
+.bar i { display: block; height: 100%; background: var(--accent); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+.opts { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; }
+footer.f { margin-top: 26px; font-size: 13px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+.ev { display: grid; grid-template-columns: 4.5em 5.5em minmax(0, 1fr); gap: 2px 10px; font: 12.5px/1.5 var(--f-mono); padding: 4px 0; border-bottom: 1px solid var(--line); }
+.ev .kind { font-family: var(--f-body); font-weight: 600; font-size: 12px; }
+.ev .kind.split { color: var(--warn); } .ev .kind.merge { color: var(--accent); } .ev .kind.end { color: var(--good); } .ev .kind.dead { color: var(--bad); } .ev .kind.exit { color: var(--muted); }
+.ev .body { min-width: 0; overflow-wrap: anywhere; }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>SWEET <span>Lab</span></h1>
+    <p>Write a small C program, then watch abstract execution derive loop bounds, infeasible paths and execution-count facts, the way the SWEET flow-analysis tool does on ALF code.</p>
+    <nav><a href="tcrest.html">T-CREST Lab →</a></nav>
+  </header>
+
+  <div class="grid">
+    <section class="panel" aria-label="Program">
+      <div class="ph">
+        <label class="ctl">Example
+          <select id="ex"></select>
+        </label>
+        <label class="ctl">State merging
+          <select id="merge">
+            <option value="none">None (every path separate)</option>
+            <option value="loop-exit">At loop exits</option>
+            <option value="all">At loop exits and join points</option>
+          </select>
+        </label>
+        <span style="flex:1"></span>
+        <button id="run" type="button">Analyse</button>
+      </div>
+      <p class="blurb" id="blurb"></p>
+      <div class="editor"><textarea id="src" class="code" spellcheck="false" aria-label="mini-C source"></textarea></div>
+    </section>
+
+    <section class="panel" aria-label="Analysis results">
+      <div id="errbox"></div>
+      <div class="stats" id="stats"></div>
+      <div class="tabs" role="tablist" id="tabs"></div>
+      <div class="tabpane" id="pane"></div>
+    </section>
+  </div>
+
+  <footer class="f">A teaching model written for this lab. It follows the ideas published about SWEET (Mälardalen University) but is not SWEET: the input language, the ALF printout and the flow-fact notation are simplified.</footer>
+</div>
+
+<script>
+// ============================================================================
+// SWEET Lab core: mini-C front end -> ALF-like IR -> Abstract Execution (AE)
+// A didactic re-implementation of the ideas in SWEET (Mälardalen University).
+// It is NOT the real SWEET and does not read real ALF files.
+// ============================================================================
+(function (global) {
+  'use strict';
+
+  // ---------------------------------------------------------------- intervals
+  const INF = Infinity;
+  const iv = (lo, hi) => (lo > hi ? null : [lo, hi]);
+  const TOP = () => [-INF, INF];
+  const ivStr = (v) => {
+    if (!v) return '⊥';
+    const f = (x) => (x === INF ? '+∞' : x === -INF ? '-∞' : String(x));
+    return v[0] === v[1] ? f(v[0]) : '[' + f(v[0]) + '..' + f(v[1]) + ']';
+  };
+  const join = (a, b) => [Math.min(a[0], b[0]), Math.max(a[1], b[1])];
+  const meet = (a, b) => iv(Math.max(a[0], b[0]), Math.min(a[1], b[1]));
+  const mulS = (x, y) => (x === 0 || y === 0 ? 0 : x * y);
+  const ops = {
+    '+': (a, b) => [a[0] + b[0], a[1] + b[1]],
+    '-': (a, b) => [a[0] - b[1], a[1] - b[0]],
+    '*': (a, b) => {
+      const c = [mulS(a[0], b[0]), mulS(a[0], b[1]), mulS(a[1], b[0]), mulS(a[1], b[1])];
+      return [Math.min(...c), Math.max(...c)];
+    },
+    '/': (a, b) => {
+      // integer division, divisor interval with 0 removed
+      const parts = [];
+      if (b[0] <= -1) parts.push([b[0], Math.min(b[1], -1)]);
+      if (b[1] >= 1) parts.push([Math.max(b[0], 1), b[1]]);
+      if (!parts.length) return TOP(); // division by exactly 0: give up
+      let r = null;
+      for (const d of parts) {
+        const c = [a[0] / d[0], a[0] / d[1], a[1] / d[0], a[1] / d[1]]
+          .map((x) => (isNaN(x) ? 0 : Math.trunc(x)));
+        const p = [Math.min(...c), Math.max(...c)];
+        r = r ? join(r, p) : p;
+      }
+      return r;
+    },
+    '%': (a, b) => {
+      const m = Math.max(Math.abs(b[0]), Math.abs(b[1]));
+      if (m === 0) return TOP();
+      const lim = m - 1;
+      if (a[0] >= 0) return [0, Math.min(a[1], lim)];
+      if (a[1] <= 0) return [Math.max(a[0], -lim), 0];
+      return [-lim, lim];
+    },
+  };
+
+  // ----------------------------------------------------------------- lexer
+  function lex(src) {
+    const toks = [];
+    const re = /\s+|\/\/[^\n]*|\/\*[\s\S]*?\*\/|(\d+)|([A-Za-z_]\w*)|(\+\+|--|\+=|-=|\*=|==|!=|<=|>=|&&|\|\||[-+*/%<>=!(){};,])/y;
+    let m, line = 1;
+    re.lastIndex = 0;
+    while (re.lastIndex < src.length) {
+      const start = re.lastIndex;
+      m = re.exec(src);
+      if (!m) throw new Error('Line ' + line + ': unexpected character "' + src[start] + '"');
+      if (m[1]) toks.push({ t: 'num', v: parseInt(m[1], 10), line });
+      else if (m[2]) toks.push({ t: 'id', v: m[2], line });
+      else if (m[3]) toks.push({ t: 'op', v: m[3], line });
+      line += (m[0].match(/\n/g) || []).length;
+    }
+    toks.push({ t: 'eof', v: '<end>', line });
+    return toks;
+  }
+
+  // ----------------------------------------------------------------- parser
+  const KW = new Set(['int', 'if', 'else', 'while', 'for', 'nondet']);
+  function parse(src) {
+    const toks = lex(src);
+    let p = 0;
+    const peek = () => toks[p];
+    const next = () => toks[p++];
+    const is = (v) => toks[p].v === v && toks[p].t !== 'num';
+    const expect = (v) => {
+      if (!is(v)) throw new Error('Line ' + peek().line + ': expected "' + v + '" but found "' + peek().v + '"');
+      return next();
+    };
+    const ident = () => {
+      const t = next();
+      if (t.t !== 'id' || KW.has(t.v)) throw new Error('Line ' + t.line + ': expected a variable name, found "' + t.v + '"');
+      return t.v;
+    };
+
+    function primary() {
+      const t = peek();
+      if (t.t === 'num') { next(); return { k: 'num', v: t.v }; }
+      if (is('(')) { next(); const e = expr(); expect(')'); return e; }
+      if (is('nondet')) {
+        next(); expect('(');
+        const lo = signedNum(); expect(','); const hi = signedNum(); expect(')');
+        if (lo > hi) throw new Error('Line ' + t.line + ': nondet(lo, hi) needs lo <= hi');
+        return { k: 'nondet', lo, hi };
+      }
+      if (t.t === 'id') return { k: 'var', v: ident() };
+      throw new Error('Line ' + t.line + ': unexpected "' + t.v + '" in expression');
+    }
+    function signedNum() {
+      let s = 1;
+      if (is('-')) { next(); s = -1; }
+      const t = next();
+      if (t.t !== 'num') throw new Error('Line ' + t.line + ': expected a number');
+      return s * t.v;
+    }
+    function unary() {
+      if (is('-')) { next(); return { k: 'bin', op: '-', a: { k: 'num', v: 0 }, b: unary() }; }
+      if (is('!')) { next(); return { k: 'not', a: unary() }; }
+      return primary();
+    }
+    const levels = [['||'], ['&&'], ['==', '!='], ['<', '<=', '>', '>='], ['+', '-'], ['*', '/', '%']];
+    function binLevel(i) {
+      if (i === levels.length) return unary();
+      let a = binLevel(i + 1);
+      while (peek().t === 'op' && levels[i].includes(peek().v)) {
+        const op = next().v;
+        const b = binLevel(i + 1);
+        a = op === '&&' || op === '||' ? { k: 'logic', op, a, b } : { k: 'bin', op, a, b };
+      }
+      return a;
+    }
+    const expr = () => binLevel(0);
+
+    function simple() {
+      const line = peek().line;
+      if (is('int')) {
+        next(); const v = ident();
+        if (is('=')) { next(); return { k: 'assign', v, e: expr(), line, decl: true }; }
+        return { k: 'decl', v, line };
+      }
+      const v = ident();
+      if (is('++')) { next(); return { k: 'assign', v, e: { k: 'bin', op: '+', a: { k: 'var', v }, b: { k: 'num', v: 1 } }, line }; }
+      if (is('--')) { next(); return { k: 'assign', v, e: { k: 'bin', op: '-', a: { k: 'var', v }, b: { k: 'num', v: 1 } }, line }; }
+      for (const op of ['+=', '-=', '*=']) {
+        if (is(op)) { next(); return { k: 'assign', v, e: { k: 'bin', op: op[0], a: { k: 'var', v }, b: expr() }, line }; }
+      }
+      expect('=');
+      return { k: 'assign', v, e: expr(), line };
+    }
+    function block() {
+      if (is('{')) {
+        next(); const body = [];
+        while (!is('}')) { if (peek().t === 'eof') throw new Error('Missing "}"'); body.push(stmt()); }
+        next(); return body;
+      }
+      return [stmt()];
+    }
+    function stmt() {
+      const line = peek().line;
+      if (is('{')) return { k: 'block', body: block(), line };
+      if (is('if')) {
+        next(); expect('('); const c = expr(); expect(')');
+        const t = block(); let e = null;
+        if (is('else')) { next(); e = block(); }
+        return { k: 'if', c, t, e, line };
+      }
+      if (is('while')) {
+        next(); expect('('); const c = expr(); expect(')');
+        return { k: 'while', c, body: block(), line };
+      }
+      if (is('for')) {
+        next(); expect('(');
+        const init = is(';') ? null : simple(); expect(';');
+        const c = is(';') ? { k: 'num', v: 1 } : expr(); expect(';');
+        const step = is(')') ? null : simple(); expect(')');
+        return { k: 'for', init, c, step, body: block(), line };
+      }
+      if (is(';')) { next(); return { k: 'block', body: [], line }; }
+      const s = simple(); expect(';'); return s;
+    }
+    const prog = [];
+    while (peek().t !== 'eof') prog.push(stmt());
+    return prog;
+  }
+
+  // ------------------------------------------------- expression printing
+  const PREC = { '||': 1, '&&': 2, '==': 3, '!=': 3, '<': 4, '<=': 4, '>': 4, '>=': 4, '+': 5, '-': 5, '*': 6, '/': 6, '%': 6 };
+  function eStr(e, parent) {
+    parent = parent || 0;
+    let s, pr = 9;
+    switch (e.k) {
+      case 'num': return String(e.v);
+      case 'var': return e.v;
+      case 'nondet': return 'nondet(' + e.lo + ', ' + e.hi + ')';
+      case 'not': return '!' + eStr(e.a, 8);
+      case 'bin': case 'logic':
+        pr = PREC[e.op];
+        s = eStr(e.a, pr) + ' ' + e.op + ' ' + eStr(e.b, pr + 1);
+        return pr < parent ? '(' + s + ')' : s;
+    }
+    return '?';
+  }
+  // ALF-flavoured printing of expressions (prefix form, like ALF's s-expressions)
+  const ALFOP = { '+': 'add', '-': 'sub', '*': 'u_mul', '/': 's_div', '%': 's_mod', '<': 's_lt', '<=': 's_le', '>': 's_gt', '>=': 's_ge', '==': 'eq', '!=': 'neq' };
+  function eAlf(e) {
+    switch (e.k) {
+      case 'num': return '{ dec_signed 32 ' + e.v + ' }';
+      case 'var': return '{ load 32 { addr 32 { fref 32 ' + e.v + ' } } }';
+      case 'nondet': return '{ undefined 32 }  /* input in ' + ivStr([e.lo, e.hi]) + ' */';
+      case 'not': return '{ not 1 ' + eAlf(e.a) + ' }';
+      case 'bin': return '{ ' + ALFOP[e.op] + ' 32 ' + eAlf(e.a) + ' ' + eAlf(e.b) + ' }';
+      case 'logic': return '{ ' + (e.op === '&&' ? 'and' : 'or') + ' 1 ' + eAlf(e.a) + ' ' + eAlf(e.b) + ' }';
+    }
+  }
+
+  // ------------------------------------------------------------- lowering
+  // CFG: blocks with straight-line assignments and one terminator.
+  function lower(prog) {
+    const blocks = [];
+    const loops = [];
+    const loopStack = [];
+    const vars = new Set();
+    function nb(note) {
+      const b = { id: blocks.length, name: 'B' + blocks.length, stmts: [], term: null, note: note || '', loops: loopStack.map((l) => l.id), line: null };
+      blocks.push(b);
+      for (const l of loopStack) l.members.add(b.id);
+      return b;
+    }
+    function collectVars(e) {
+      if (!e) return;
+      if (e.k === 'var') vars.add(e.v);
+      if (e.a) collectVars(e.a);
+      if (e.b) collectVars(e.b);
+    }
+    // condition with short-circuit lowering
+    function cond(e, cur, t, f) {
+      collectVars(e);
+      if (e.k === 'logic' && e.op === '&&') {
+        const mid = nb('second operand of &&');
+        cond(e.a, cur, mid, f);
+        cond(e.b, mid, t, f);
+      } else if (e.k === 'logic' && e.op === '||') {
+        const mid = nb('second operand of ||');
+        cond(e.a, cur, t, mid);
+        cond(e.b, mid, t, f);
+      } else if (e.k === 'not') {
+        cond(e.a, cur, f, t);
+      } else {
+        cur.term = { k: 'cond', e, t: t.id, f: f.id };
+      }
+    }
+    function stmts(list, cur) {
+      for (const s of list) cur = stmt(s, cur);
+      return cur;
+    }
+    function assign(s, cur) {
+      vars.add(s.v);
+      if (s.k === 'decl') { cur.stmts.push({ v: s.v, e: null, line: s.line }); return; }
+      collectVars(s.e);
+      cur.stmts.push({ v: s.v, e: s.e, line: s.line });
+    }
+    function stmt(s, cur) {
+      if (cur.line == null) cur.line = s.line;
+      switch (s.k) {
+        case 'decl': case 'assign': assign(s, cur); return cur;
+        case 'block': return stmts(s.body, cur);
+        case 'if': {
+          const tb = nb('then (line ' + s.line + ')');
+          const eb = s.e ? nb('else (line ' + s.line + ')') : null;
+          const join = nb('after if (line ' + s.line + ')');
+          cond(s.c, cur, tb, eb || join);
+          const te = stmts(s.t, tb); te.term = te.term || { k: 'jump', to: join.id };
+          if (eb) { const ee = stmts(s.e, eb); ee.term = ee.term || { k: 'jump', to: join.id }; }
+          // move join to the end so block numbers follow source order
+          blocks.splice(blocks.indexOf(join), 1); blocks.push(join);
+          return join;
+        }
+        case 'while': case 'for': {
+          if (s.k === 'for' && s.init) assign(s.init, cur);
+          const L = { id: loops.length, name: 'L' + (loops.length + 1), line: s.line, header: null, members: new Set(), kind: s.k, text: (s.k === 'for' ? 'for (…; ' : 'while (') + eStr(s.c) + (s.k === 'for' ? '; …)' : ')') };
+          loops.push(L);
+          loopStack.push(L);
+          const h = nb('loop ' + L.name + ' header (line ' + s.line + ')');
+          h.line = s.line;
+          L.header = h.id;
+          h.isHeader = L.id;
+          cur.term = { k: 'jump', to: h.id };
+          const body = nb('loop ' + L.name + ' body');
+          const latch = s.k === 'for' ? nb('loop ' + L.name + ' step') : null;
+          loopStack.pop();
+          const exit = nb('after loop ' + L.name);
+          loopStack.push(L);
+          cond(s.c, h, body, exit);
+          const be = stmts(s.body, body);
+          if (latch) { be.term = { k: 'jump', to: latch.id }; if (s.step) assign(s.step, latch); latch.term = { k: 'jump', to: h.id }; }
+          else be.term = { k: 'jump', to: h.id };
+          loopStack.pop();
+          blocks.splice(blocks.indexOf(exit), 1); blocks.push(exit);
+          return exit;
+        }
+      }
+      throw new Error('internal: unknown statement');
+    }
+    const entry = nb('program entry');
+    const last = stmts(prog, entry);
+    last.term = { k: 'exit' };
+    // renumber blocks in emission order for readability
+    const map = new Map();
+    blocks.forEach((b, i) => map.set(b.id, i));
+    for (const b of blocks) {
+      b.id = map.get(b.id); b.name = 'B' + b.id;
+      if (b.term.k === 'jump') b.term.to = map.get(b.term.to);
+      if (b.term.k === 'cond') { b.term.t = map.get(b.term.t); b.term.f = map.get(b.term.f); }
+    }
+    for (const L of loops) {
+      L.header = map.get(L.header);
+      L.members = new Set([...L.members].map((x) => map.get(x)));
+    }
+    blocks.sort((a, b) => a.id - b.id);
+    // predecessors
+    for (const b of blocks) b.preds = [];
+    for (const b of blocks) for (const s of succs(b)) blocks[s].preds.push(b.id);
+    // nesting depth of loops
+    for (const L of loops) L.parent = null;
+    for (const L of loops) {
+      let best = null;
+      for (const M of loops) if (M !== L && M.members.has(L.header) && (!best || best.members.size > M.members.size)) best = M;
+      L.parent = best ? best.id : null;
+    }
+    return { blocks, loops, vars: [...vars].sort() };
+  }
+  function succs(b) {
+    if (b.term.k === 'jump') return [b.term.to];
+    if (b.term.k === 'cond') return [b.term.t, b.term.f];
+    return [];
+  }
+
+  // ------------------------------------------------------- ALF-like listing
+  function toAlf(cfg) {
+    const out = [];
+    out.push('{ alf');
+    out.push('  { macro_defs }  { least_addr_unit 8 }  little_endian');
+    out.push('  { exports }  { imports }');
+    out.push('  { decls');
+    for (const v of cfg.vars) out.push('    { alloc { fref 32 ' + v + ' } 32 }');
+    out.push('  }');
+    out.push('  { inits }');
+    out.push('  { funcs');
+    out.push('    { func { label 32 { lref 32 main } { dec_unsigned 32 0 } }');
+    out.push('      { arg_decls } { scope { decls } { inits } { stmts');
+    for (const b of cfg.blocks) {
+      out.push('');
+      out.push('        { label 32 { lref 32 ' + b.name + ' } { dec_unsigned 32 0 } }' + (b.note ? '   /* ' + b.note + ' */' : ''));
+      for (const s of b.stmts) {
+        if (!s.e) out.push('        /* int ' + s.v + ';  (uninitialised: value is TOP) */');
+        else out.push('        { store { addr 32 { fref 32 ' + s.v + ' } } with ' + eAlf(s.e) + ' }');
+      }
+      const t = b.term;
+      if (t.k === 'jump') out.push('        { jump { label 32 { lref 32 B' + t.to + ' } } leaving 0 }');
+      else if (t.k === 'cond')
+        out.push('        { switch ' + eAlf(t.e) + '\n            { target { dec_unsigned 1 1 } { label 32 { lref 32 B' + t.t + ' } } }\n            { default { label 32 { lref 32 B' + t.f + ' } } } }');
+      else out.push('        { return }');
+    }
+    out.push('      } } }');
+    out.push('  }');
+    out.push('}');
+    return out.join('\n');
+  }
+  function toReadable(cfg) {
+    // compact three-address style view, one block per entry
+    return cfg.blocks.map((b) => ({
+      id: b.id, name: b.name, note: b.note, header: b.isHeader != null ? cfg.loops[b.isHeader].name : null,
+      stmts: b.stmts.map((s) => (s.e ? s.v + ' := ' + eStr(s.e) : 'int ' + s.v + '  (TOP)')),
+      term: b.term.k === 'jump' ? 'goto B' + b.term.to
+        : b.term.k === 'cond' ? 'if (' + eStr(b.term.e) + ') goto B' + b.term.t + ' else goto B' + b.term.f
+        : 'return',
+      succs: succs(b), cost: blockCost(b),
+    }));
+  }
+
+  // --------------------------------------------------------- timing model
+  // Simple ALF-level timing model (SWEET also had one): unit costs.
+  function exprCost(e) {
+    if (!e) return 0;
+    switch (e.k) {
+      case 'num': return 0;
+      case 'var': return 1;              // a load
+      case 'nondet': return 1;
+      case 'not': return 1 + exprCost(e.a);
+      case 'bin': return (e.op === '*' ? 3 : e.op === '/' || e.op === '%' ? 10 : 1) + exprCost(e.a) + exprCost(e.b);
+      case 'logic': return 1 + exprCost(e.a) + exprCost(e.b);
+    }
+    return 1;
+  }
+  function blockCost(b) {
+    let c = 0;
+    for (const s of b.stmts) c += s.e ? 1 + exprCost(s.e) : 0; // +1 for the store
+    if (b.term.k === 'cond') c += 2 + exprCost(b.term.e);
+    else if (b.term.k === 'jump') c += 1;
+    else c += 1;
+    return c;
+  }
+
+  // ----------------------------------------------------- abstract execution
+  function evalE(e, env) {
+    switch (e.k) {
+      case 'num': return [e.v, e.v];
+      case 'var': return env[e.v] || TOP();
+      case 'nondet': return [e.lo, e.hi];
+      case 'not': {
+        const a = evalE(e.a, env);
+        const t = canBeTrue(a), f = canBeFalse(a);
+        return [f && !t ? 1 : t && !f ? 0 : 0, f ? 1 : 0].sort((x, y) => x - y);
+      }
+      case 'logic': {
+        const a = truth(evalE(e.a, env)), b = truth(evalE(e.b, env));
+        const r = e.op === '&&' ? [a[0] && b[0] ? 1 : 0, a[1] && b[1] ? 1 : 0] : [a[0] || b[0] ? 1 : 0, a[1] || b[1] ? 1 : 0];
+        return r;
+      }
+      case 'bin': {
+        const a = evalE(e.a, env), b = evalE(e.b, env);
+        if (ops[e.op]) return ops[e.op](a, b);
+        const r = relation(e.op, a, b);
+        return [r.f ? 0 : 1, r.t ? 1 : 0];
+      }
+    }
+  }
+  const canBeTrue = (v) => !(v[0] === 0 && v[1] === 0);
+  const canBeFalse = (v) => v[0] <= 0 && v[1] >= 0;
+  const truth = (v) => [canBeTrue(v) && !canBeFalse(v) ? 1 : 0, canBeTrue(v) ? 1 : 0]; // [mustTrue, mayTrue]
+  function relation(op, a, b) {
+    switch (op) {
+      case '<': return { t: a[0] < b[1], f: a[1] >= b[0] };
+      case '<=': return { t: a[0] <= b[1], f: a[1] > b[0] };
+      case '>': return { t: a[1] > b[0], f: a[0] <= b[1] };
+      case '>=': return { t: a[1] >= b[0], f: a[0] < b[1] };
+      case '==': { const o = meet(a, b); return { t: !!o, f: !(a[0] === a[1] && b[0] === b[1] && a[0] === b[0]) }; }
+      case '!=': { const r = relation('==', a, b); return { t: r.f, f: r.t }; }
+    }
+  }
+  const NEG = { '<': '>=', '<=': '>', '>': '<=', '>=': '<', '==': '!=', '!=': '==' };
+  const FLIP = { '<': '>', '<=': '>=', '>': '<', '>=': '<=', '==': '==', '!=': '!=' };
+  // refine x against y for relation (x op y) being true; returns new interval for x or null
+  function refineOne(op, x, y) {
+    switch (op) {
+      case '<': return meet(x, [-INF, y[1] - 1]);
+      case '<=': return meet(x, [-INF, y[1]]);
+      case '>': return meet(x, [y[0] + 1, INF]);
+      case '>=': return meet(x, [y[0], INF]);
+      case '==': return meet(x, y);
+      case '!=':
+        if (y[0] === y[1]) {
+          if (x[0] === y[0]) return iv(x[0] + 1, x[1]);
+          if (x[1] === y[0]) return iv(x[0], x[1] - 1);
+        }
+        return x;
+    }
+  }
+  // returns refined env if branch (e is `want`) is feasible, else null
+  function branch(e, env, want) {
+    if (e.k === 'bin' && !ops[e.op]) {
+      const op = want ? e.op : NEG[e.op];
+      const a = evalE(e.a, env), b = evalE(e.b, env);
+      const r = relation(op, a, b);
+      if (!r.t) return null;
+      const ne = Object.assign({}, env);
+      if (e.a.k === 'var') { const na = refineOne(op, a, b); if (!na) return null; ne[e.a.v] = na; }
+      if (e.b.k === 'var') { const nbv = refineOne(FLIP[op], b, ne[e.a.v] && e.a.k === 'var' ? ne[e.a.v] : a); if (!nbv) return null; ne[e.b.v] = nbv; }
+      return ne;
+    }
+    const v = evalE(e, env);
+    if (want ? !canBeTrue(v) : !canBeFalse(v)) return null;
+    if (e.k === 'var') {
+      const ne = Object.assign({}, env);
+      ne[e.v] = want ? (refineOne('!=', v, [0, 0]) || v) : [0, 0];
+      return ne;
+    }
+    return env;
+  }
+  const envStr = (env, vars) => vars.filter((v) => env[v]).map((v) => v + '=' + ivStr(env[v])).join(', ');
+
+  // options: { merge: 'none' | 'loop-exit' | 'all', maxStates, maxSteps }
+  function abstractExecute(cfg, opt) {
+    opt = Object.assign({ merge: 'none', maxStates: 20000, maxSteps: 400000, maxTrace: 600 }, opt || {});
+    const nB = cfg.blocks.length, nL = cfg.loops.length;
+    const trace = [];
+    const T = (ev) => { if (trace.length < opt.maxTrace) trace.push(ev); else if (trace.length === opt.maxTrace) trace.push({ k: 'more' }); };
+    const loopStats = cfg.loops.map(() => ({ min: INF, max: -INF, entries: 0 }));
+    const mergeTargets = new Set();
+    if (opt.merge === 'loop-exit' || opt.merge === 'all') for (const b of cfg.blocks) for (const s of succs(b)) {
+      for (const L of cfg.loops) if (L.members.has(b.id) && !L.members.has(s)) mergeTargets.add(s);
+    }
+    if (opt.merge === 'all') for (const b of cfg.blocks) if (b.preds.length > 1) mergeTargets.add(b.id);
+
+    let sid = 0;
+    const mk = (pc, env, loops, cmin, cmax, time, merged) => ({ id: sid++, pc, env, loops, cmin, cmax, time, merged });
+    const work = [mk(0, {}, [], new Array(nB).fill(0), new Array(nB).fill(0), [0, 0], false)];
+    const finished = [];
+    const waiting = new Map();
+    let steps = 0, splits = 0, merges = 0, created = 1, aborted = null, anyMerge = false;
+
+    const ctxKey = (loops) => loops.map((c) => c.L + ':' + c.it).join('/');
+
+    function transition(st, from, to, env) {
+      // copy-on-write of loop context
+      let loops = st.loops.map((c) => ({ L: c.L, it: c.it }));
+      // 1. leave loops (innermost first)
+      while (loops.length) {
+        const top = loops[loops.length - 1];
+        const L = cfg.loops[top.L];
+        if (L.members.has(to)) break;
+        loops.pop();
+        const s = loopStats[top.L];
+        s.min = Math.min(s.min, top.it); s.max = Math.max(s.max, top.it); s.entries++;
+        T({ k: 'exit', s: st.id, L: L.name, it: top.it, at: 'B' + from });
+      }
+      // 2. back edge or 3. loop entry
+      const hb = cfg.blocks[to].isHeader;
+      if (hb != null) {
+        const L = cfg.loops[hb];
+        if (L.members.has(from) && loops.length && loops[loops.length - 1].L === hb) loops[loops.length - 1].it++;
+        else loops.push({ L: hb, it: 0 });
+      }
+      return { pc: to, env, loops };
+    }
+
+    function pushState(st) {
+      if (mergeTargets.has(st.pc)) {
+        const key = st.pc + '|' + ctxKey(st.loops);
+        if (!waiting.has(key)) waiting.set(key, []);
+        waiting.get(key).push(st);
+      } else work.push(st);
+    }
+
+    // Merge-point ordering: release only one waiting group at a time, choosing the
+    // one deepest inside loops, then the earliest iteration, then the earliest block.
+    // That way states that are still inside a loop catch up before a loop exit merges.
+    function flushWaiting() {
+      let bestKey = null, best = null;
+      for (const [key, group] of waiting) {
+        const g = group[0];
+        const pr = [-g.loops.length, ...g.loops.map((c) => c.it), g.pc];
+        if (!best || cmpArr(pr, best) < 0) { best = pr; bestKey = key; }
+      }
+      const sel = [[bestKey, waiting.get(bestKey)]];
+      waiting.delete(bestKey);
+      for (const [key, group] of sel) {
+        let m = group[0];
+        if (group.length > 1) {
+          merges += group.length - 1; anyMerge = true;
+          const env = Object.assign({}, m.env);
+          const cmin = m.cmin.slice(), cmax = m.cmax.slice();
+          let time = m.time.slice();
+          for (let i = 1; i < group.length; i++) {
+            const g = group[i];
+            for (const v of new Set([...Object.keys(env), ...Object.keys(g.env)])) env[v] = env[v] && g.env[v] ? join(env[v], g.env[v]) : TOP();
+            for (let b = 0; b < nB; b++) { cmin[b] = Math.min(cmin[b], g.cmin[b]); cmax[b] = Math.max(cmax[b], g.cmax[b]); }
+            time = join(time, g.time);
+          }
+          m = mk(m.pc, env, m.loops, cmin, cmax, time, true);
+          T({ k: 'merge', n: group.length, at: 'B' + m.pc, s: m.id, env: envStr(env, cfg.vars) });
+        }
+        work.push(m);
+        void key;
+      }
+    }
+    function cmpArr(a, b) {
+      for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        const x = a[i] === undefined ? -1 : a[i], y = b[i] === undefined ? -1 : b[i];
+        if (x !== y) return x - y;
+      }
+      return 0;
+    }
+
+    while (work.length || waiting.size) {
+      if (!work.length) { flushWaiting(); continue; }
+      const st = work.pop();
+      if (++steps > opt.maxSteps) { aborted = 'Stopped after ' + opt.maxSteps.toLocaleString('en') + ' abstract block executions. AE uses no widening, so a loop whose exit condition never becomes definite (for example, a bound that depends on an unconstrained input) keeps iterating. Constrain the input with nondet(lo, hi) or merge states.'; break; }
+      if (work.length + finished.length + waiting.size > opt.maxStates) { aborted = 'Stopped: more than ' + opt.maxStates.toLocaleString('en') + ' abstract states (path explosion). Try merging at loop exits or join points.'; break; }
+      const b = cfg.blocks[st.pc];
+      // execute block
+      let env = Object.assign({}, st.env);
+      for (const s of b.stmts) env[s.v] = s.e ? evalE(s.e, env) : TOP();
+      st.cmin[b.id]++; st.cmax[b.id]++;
+      const c = blockCost(b);
+      st.time = [st.time[0] + c, st.time[1] + c];
+      const t = b.term;
+      if (t.k === 'exit') {
+        finished.push(Object.assign({}, st, { env }));
+        T({ k: 'end', s: st.id, env: envStr(env, cfg.vars), time: st.time.slice() });
+        continue;
+      }
+      let outs;
+      if (t.k === 'jump') outs = [[t.to, env]];
+      else {
+        const te = branch(t.e, env, true), fe = branch(t.e, env, false);
+        outs = [];
+        if (te) outs.push([t.t, te]);
+        if (fe) outs.push([t.f, fe]);
+        if (outs.length === 2) {
+          splits++; created++;
+          T({ k: 'split', s: st.id, at: b.name, cond: eStr(t.e), tEnv: envStr(te, cfg.vars), fEnv: envStr(fe, cfg.vars), tB: 'B' + t.t, fB: 'B' + t.f });
+        } else if (!outs.length) {
+          T({ k: 'dead', s: st.id, at: b.name });
+          continue;
+        }
+      }
+      // successors (push false branch first so the true branch is explored first)
+      for (let i = outs.length - 1; i >= 0; i--) {
+        const [to, e2] = outs[i];
+        const tr = transition(st, b.id, to, e2);
+        const ns = i === 0 && outs.length === 1 ? st : mk(to, null, null, st.cmin.slice(), st.cmax.slice(), st.time.slice(), st.merged);
+        if (i === 0) { ns.cmin = st.cmin; ns.cmax = st.cmax; }
+        ns.pc = tr.pc; ns.env = tr.env; ns.loops = tr.loops;
+        pushState(ns);
+      }
+    }
+
+    // ---- collect flow facts
+    const res = { steps, splits, merges, paths: finished.length, aborted, trace, anyMerge };
+    const any = finished.length > 0;
+    res.blockCounts = cfg.blocks.map((b) => {
+      if (!any) return { min: 0, max: 0 };
+      let mn = INF, mx = 0;
+      for (const f of finished) { mn = Math.min(mn, f.cmin[b.id]); mx = Math.max(mx, f.cmax[b.id]); }
+      return { min: mn, max: mx };
+    });
+    res.loops = cfg.loops.map((L, i) => ({
+      name: L.name, header: 'B' + L.header, line: L.line, text: L.text, parent: L.parent != null ? cfg.loops[L.parent].name : null,
+      perEntryMin: loopStats[i].entries ? loopStats[i].min : null,
+      perEntryMax: loopStats[i].entries ? loopStats[i].max : null,
+      totalHeaderMax: any ? res.blockCounts[L.header].max : null,
+      totalHeaderMin: any ? res.blockCounts[L.header].min : null,
+      // total body iterations per run = header executions - loop entries
+      totalIterMax: any ? Math.max(...finished.map((f) => f.cmax[L.header] - entriesOf(cfg, L, f.cmin))) : null,
+    }));
+    res.infeasible = cfg.blocks.filter((b) => any && res.blockCounts[b.id].max === 0).map((b) => b.name);
+    res.time = any ? [Math.min(...finished.map((f) => f.time[0])), Math.max(...finished.map((f) => f.time[1]))] : null;
+    res.finalEnv = any ? finished.reduce((acc, f) => {
+      for (const v of cfg.vars) if (f.env[v]) acc[v] = acc[v] ? join(acc[v], f.env[v]) : f.env[v];
+      return acc;
+    }, {}) : {};
+    // infeasible pairs: only exact if no state merging happened and analysis completed
+    res.pairs = [];
+    res.pairsExact = !anyMerge && !aborted && any;
+    if (res.pairsExact) {
+      const cand = cfg.blocks.filter((b) => b.preds.length === 1 && cfg.blocks[b.preds[0]].term.k === 'cond' && res.blockCounts[b.id].max > 0).map((b) => b.id);
+      for (let i = 0; i < cand.length; i++) for (let j = i + 1; j < cand.length; j++) {
+        const a = cand[i], c = cand[j];
+        if (cfg.blocks[a].preds[0] === cfg.blocks[c].preds[0]) continue; // siblings: exclusive by structure
+        if (!finished.some((f) => f.cmax[a] > 0 && f.cmax[c] > 0)) res.pairs.push(['B' + a, 'B' + c]);
+        if (res.pairs.length >= 40) break;
+      }
+    }
+    return res;
+  }
+  // number of times loop L was entered on a finished path = executions of edges into header from outside
+  function entriesOf(cfg, L, counts) {
+    let n = 0;
+    for (const p of cfg.blocks[L.header].preds) if (!L.members.has(p)) {
+      const pb = cfg.blocks[p];
+      // a block outside the loop that jumps to the header: if it is a cond block, we cannot attribute exactly; approximate by its count
+      n += counts[p];
+      void pb;
+    }
+    return n;
+  }
+
+  // ---------------------------------------------------------- flow facts text
+  function flowFactsText(cfg, res, inputs) {
+    const L = [];
+    L.push('// Flow facts derived by abstract execution (simplified notation,');
+    L.push('// modelled on the kinds of facts SWEET emits; not SWEET\'s exact syntax).');
+    L.push('// #Bn = number of executions of basic block Bn in one run of the program.');
+    L.push('');
+    if (inputs.length) {
+      L.push('// input value annotations used');
+      for (const i of inputs) L.push('input ' + i);
+      L.push('');
+    }
+    if (res.aborted) L.push('// WARNING: analysis did not complete; facts below are incomplete and NOT safe.\n');
+    L.push('// loop bounds, local to each entry of the loop (iterations = back-edge traversals)');
+    for (const l of res.loops) {
+      if (l.perEntryMax == null) { L.push('loop ' + l.name + ' @ ' + l.header + ' : never entered'); continue; }
+      L.push('loop ' + l.name + ' @ ' + l.header + ' : ' + l.perEntryMin + ' <= iterations <= ' + l.perEntryMax + (l.parent ? '   // nested in ' + l.parent : ''));
+    }
+    L.push('');
+    L.push('// loop bounds, total for one program run (context-insensitive)');
+    for (const l of res.loops) if (l.totalHeaderMax != null) L.push('#' + l.header + ' <= ' + l.totalHeaderMax + '   // header of ' + l.name);
+    L.push('');
+    L.push('// upper execution bounds for every basic block');
+    for (const b of cfg.blocks) {
+      const c = res.blockCounts[b.id];
+      L.push('#' + b.name + ' ' + (c.min === c.max ? '= ' + c.max : 'in [' + c.min + '..' + c.max + ']'));
+    }
+    L.push('');
+    L.push('// infeasible code (never executed for any allowed input)');
+    if (res.infeasible.length) for (const b of res.infeasible) L.push('#' + b + ' = 0');
+    else L.push('// none found');
+    L.push('');
+    L.push('// infeasible path pairs: blocks that never both execute in the same run');
+    if (!res.pairsExact) L.push('// not computed: requires a complete analysis without state merging');
+    else if (res.pairs.length) for (const [a, b] of res.pairs) L.push('#' + a + ' = 0  ||  #' + b + ' = 0');
+    else L.push('// none found');
+    return L.join('\n');
+  }
+
+  function analyze(src, opt) {
+    const prog = parse(src);
+    const cfg = lower(prog);
+    const inputs = [];
+    (function findInputs(list) {
+      const visitE = (e, v) => { if (!e) return; if (e.k === 'nondet') inputs.push((v ? v + ' in ' : '') + ivStr([e.lo, e.hi])); visitE(e.a); visitE(e.b); };
+      for (const s of list) {
+        if (s.k === 'assign') visitE(s.e, s.v);
+        if (s.k === 'if') { visitE(s.c); findInputs(s.t); if (s.e) findInputs(s.e); }
+        if (s.k === 'while' || s.k === 'for') { visitE(s.c); if (s.init) findInputs([s.init]); if (s.step) findInputs([s.step]); findInputs(s.body); }
+        if (s.k === 'block') findInputs(s.body);
+      }
+    })(prog);
+    const res = abstractExecute(cfg, opt);
+    return { cfg, res, alf: toAlf(cfg), blocks: toReadable(cfg), facts: flowFactsText(cfg, res, inputs), inputs, ivStr, envStr: (e) => envStr(e, cfg.vars) };
+  }
+
+  const api = { analyze, parse, lower, abstractExecute, ivStr };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else global.SweetCore = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+(function () {
+  'use strict';
+  const EXAMPLES = [
+    { title: 'Input-dependent loop', blurb: 'n is an input between 1 and 10. Abstract execution splits the state each time the loop test could go either way, and records 1 to 10 iterations.',
+      src: '// n is an input value in [1, 10] (like a SWEET input annotation)\nint n = nondet(1, 10);\nint i = 0;\nint sum = 0;\nwhile (i < n) {\n    sum = sum + i;\n    i++;\n}\n' },
+    { title: 'Triangular nested loops', blurb: 'The inner loop runs i times. Per entry it is bounded by 9, but over the whole run its body executes 45 times, not 10 × 9 = 90. Compare the two kinds of loop bound.',
+      src: 'int s = 0;\nfor (int i = 0; i < 10; i++) {\n    for (int j = 0; j < i; j++) {\n        s += j;\n    }\n}\n' },
+    { title: 'Infeasible paths', blurb: 'x > 3 and x < 2 can never both hold, and y can never be 3. AE finds the dead block and the pair of then-blocks that never run together.',
+      src: 'int x = nondet(0, 5);\nint y = 0;\nif (x > 3) {\n    y = 1;\n}\nif (x < 2) {\n    y = 2;\n}\nif (y == 3) {\n    x = 0;      // dead code\n}\n' },
+    { title: 'Short-circuit condition', blurb: 'The && is lowered into two blocks, as a compiler would. The second test (k*k < a*a) is what actually ends the loop.',
+      src: 'int a = nondet(0, 9);\nint k = 0;\nwhile (k < 20 && k * k < a * a) {\n    k++;\n}\n' },
+    { title: 'Path explosion', blurb: 'Each iteration reads an unknown bit, so there are 2^12 = 4096 paths. Without merging AE follows all of them; merging at join points needs only a handful of steps. Switch the merging option and compare.',
+      src: 'int s = 0;\nfor (int i = 0; i < 12; i++) {\n    int x = nondet(0, 1);\n    if (x == 1) {\n        s = s + 2;\n    } else {\n        s = s + 1;\n    }\n}\n' },
+    { title: 'No widening: unbounded input', blurb: 'n can be up to a million, so AE would have to unroll a million iterations. It stops at its step budget. This is the price of an analysis without widening.',
+      src: 'int n = nondet(0, 1000000);\nint i = 0;\nwhile (i < n) {\n    i++;\n}\n' },
+    { title: 'Limits of intervals', blurb: 'A Collatz-style loop. Intervals cannot express "n is even", so every iteration splits again and the analysis does not converge. Real tools need stronger domains or manual annotations here.',
+      src: 'int n = nondet(1, 20);\nint steps = 0;\nwhile (n != 1) {\n    if (n % 2 == 0) {\n        n = n / 2;\n    } else {\n        n = 3 * n + 1;\n    }\n    steps++;\n}\n' },
+  ];
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const TABS = [['facts', 'Flow facts'], ['blocks', 'Basic blocks'], ['alf', 'ALF code'], ['trace', 'AE trace'], ['about', 'How SWEET works']];
+  let tab = 'facts', last = null;
+  try { const t = localStorage.getItem('sweet-tab'); if (TABS.some((x) => x[0] === t)) tab = t; } catch (e) {}
+
+  EXAMPLES.forEach((e, i) => { const o = document.createElement('option'); o.value = i; o.textContent = e.title; $('ex').appendChild(o); });
+  function load(i) { $('src').value = EXAMPLES[i].src; $('blurb').textContent = EXAMPLES[i].blurb; run(); }
+  $('ex').addEventListener('change', () => load(+$('ex').value));
+  $('merge').addEventListener('change', run);
+  $('run').addEventListener('click', run);
+  $('src').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); run(); }
+    if (e.key === 'Tab') { e.preventDefault(); const t = e.target, s = t.selectionStart; t.value = t.value.slice(0, s) + '    ' + t.value.slice(t.selectionEnd); t.selectionStart = t.selectionEnd = s + 4; }
+  });
+
+  function renderTabs() {
+    $('tabs').innerHTML = TABS.map(([k, n]) => '<button type="button" role="tab" id="tab-' + k + '" aria-selected="' + (k === tab) + '">' + n + '</button>').join('');
+    TABS.forEach(([k]) => $('tab-' + k).addEventListener('click', () => { tab = k; try { localStorage.setItem('sweet-tab', k); } catch (e) {} renderTabs(); renderPane(); }));
+  }
+
+  function run() {
+    $('errbox').innerHTML = '';
+    try {
+      last = SweetCore.analyze($('src').value, { merge: $('merge').value });
+    } catch (e) {
+      last = null;
+      $('errbox').innerHTML = '<div class="err"><strong>Cannot analyse:</strong> ' + esc(e.message) + '</div>';
+    }
+    renderStats(); renderTabs(); renderPane();
+  }
+
+  const iv = (a, b) => (a === b ? String(a) : a + '–' + b);
+  function renderStats() {
+    if (!last) { $('stats').innerHTML = ''; return; }
+    const r = last.res;
+    const loops = r.loops.filter((l) => l.perEntryMax != null).map((l) => l.name + ' ' + iv(l.perEntryMin, l.perEntryMax)).join(', ') || '—';
+    const status = r.aborted ? '<span class="chip bad">Incomplete</span>' : '<span class="chip good">Complete</span>';
+    $('stats').innerHTML = [
+      ['Analysis', status, r.steps.toLocaleString('en') + ' block executions'],
+      ['Loop bounds', '<span style="font-size:17px">' + esc(loops) + '</span>', 'iterations per loop entry'],
+      ['Abstract states', r.splits.toLocaleString('en') + ' splits', r.merges.toLocaleString('en') + ' merges, ' + r.paths.toLocaleString('en') + ' final states'],
+      ['Infeasible blocks', r.infeasible.length ? r.infeasible.join(', ') : '0', r.pairs.length + ' infeasible pair' + (r.pairs.length === 1 ? '' : 's')],
+      ['BCET–WCET estimate', r.time ? iv(r.time[0], r.time[1]) : '—', 'ALF unit-cost model'],
+    ].map(([k, v, s]) => '<div class="stat"><div class="k">' + k + '</div><div class="v">' + v + '</div><div class="s">' + s + '</div></div>').join('');
+  }
+
+  function renderPane() {
+    const P = $('pane');
+    if (tab === 'about') { P.innerHTML = ABOUT; return; }
+    if (!last) { P.innerHTML = '<p class="prose">Fix the error in the program to see results here.</p>'; return; }
+    const r = last.res;
+    const warn = r.aborted ? '<div class="note">' + esc(r.aborted) + '</div>' : '';
+    if (tab === 'facts') {
+      P.innerHTML = warn + loopTable() + '<pre class="out">' + esc(last.facts) + '</pre>';
+    } else if (tab === 'blocks') {
+      const maxC = Math.max(1, ...r.blockCounts.map((c) => c.max));
+      P.innerHTML = warn + '<div class="legend"><span><i style="background:var(--accent)"></i>loop header</span><span><i style="background:var(--bad)"></i>infeasible</span><span>bar = upper bound on executions per run</span></div><div class="cards">' + last.blocks.map((b) => {
+        const c = r.blockCounts[b.id];
+        const dead = c.max === 0;
+        return '<div class="bb' + (dead ? ' dead' : b.header ? ' hot' : '') + '"><div class="h">' + b.name + (b.header ? ' · ' + b.header : '') + '<small>' + esc(b.note) + '</small></div>' +
+          '<div class="c">' + esc(b.stmts.concat([b.term]).join('\n')) + '</div>' +
+          '<div class="f"><span>runs ' + iv(c.min, c.max) + '</span><span>cost ' + b.cost + '</span><span class="bar" style="flex:1"><i style="width:' + (100 * c.max / maxC) + '%"></i></span></div></div>';
+      }).join('') + '</div>';
+    } else if (tab === 'alf') {
+      P.innerHTML = '<p class="prose" style="margin-top:0">SWEET does not read C. A front end translates the program into ALF, a language built for flow analysis: memory is accessed through explicit <code>load</code> and <code>store</code>, and control flow is <code>jump</code> and <code>switch</code> between labels. This is an ALF-flavoured printout of the lowered program, simplified from the real grammar.</p><pre class="out">' + esc(last.alf) + '</pre>';
+    } else if (tab === 'trace') {
+      const evs = r.trace.map((e) => {
+        if (e.k === 'more') return '<div class="ev"><span></span><span></span><span class="body">… trace truncated</span></div>';
+        const row = (kind, at, body) => '<div class="ev"><span class="kind ' + kind + '">' + kind + '</span><span>' + esc(at) + '</span><span class="body">' + body + '</span></div>';
+        if (e.k === 'split') return row('split', e.at, 'state #' + e.s + ' on <b>' + esc(e.cond) + '</b><br>true → ' + e.tB + ' with ' + esc(e.tEnv || '—') + '<br>false → ' + e.fB + ' with ' + esc(e.fEnv || '—'));
+        if (e.k === 'merge') return row('merge', e.at, e.n + ' states joined into #' + e.s + ': ' + esc(e.env));
+        if (e.k === 'exit') return row('exit', e.at, 'state #' + e.s + ' leaves ' + e.L + ' after ' + e.it + ' iteration' + (e.it === 1 ? '' : 's'));
+        if (e.k === 'end') return row('end', 'return', 'state #' + e.s + ' finished: ' + esc(e.env) + ', time ' + iv(e.time[0], e.time[1]));
+        if (e.k === 'dead') return row('dead', e.at, 'state #' + e.s + ' has no feasible successor');
+        return '';
+      }).join('');
+      P.innerHTML = warn + '<p class="prose" style="margin-top:0">Each abstract state carries an interval for every variable. A <b>split</b> happens when a condition can be both true and false; each branch gets the values refined by the condition. A <b>merge</b> joins states at a merge point into one, trading precision for speed.</p>' + (evs || '<p>No events.</p>');
+    }
+  }
+  function loopTable() {
+    const r = last.res;
+    if (!r.loops.length) return '';
+    return '<div class="tscroll"><table class="t" style="margin-bottom:12px"><thead><tr><th>Loop</th><th>Source</th><th>Header</th><th class="n">Iterations per entry</th><th class="n">Header runs per program run</th></tr></thead><tbody>' +
+      r.loops.map((l) => '<tr><td>' + l.name + (l.parent ? ' <span class="chip">in ' + l.parent + '</span>' : '') + '</td><td><code>' + esc(l.text) + '</code> line ' + l.line + '</td><td><code>' + l.header + '</code></td><td class="n">' + (l.perEntryMax == null ? '—' : iv(l.perEntryMin, l.perEntryMax)) + '</td><td class="n">' + (l.totalHeaderMax == null ? '—' : iv(l.totalHeaderMin, l.totalHeaderMax)) + '</td></tr>').join('') + '</tbody></table></div>';
+  }
+
+  const ABOUT = `<div class="prose">
+<h3>Where SWEET fits</h3>
+<p>Static WCET analysis has three phases: a <b>flow analysis</b> that bounds how often each part of the program can run, a <b>low-level analysis</b> that gives each piece of code an execution time on the hardware, and a <b>calculation</b> that combines both into a bound, usually with IPET (an integer linear program over execution counts). SWEET (SWEdish Execution Time tool, Mälardalen University) began as a complete WCET tool and is now mainly a flow-analysis tool. Its results, called <b>flow facts</b>, are meant to be handed to tools such as aiT, RapiTime or platin.</p>
+<h3>ALF</h3>
+<p>SWEET analyses ALF, an intermediate language designed for flow analysis, not C or machine code. Front ends translate C (and machine code, for example in the Bound-T integration) into ALF. The <em>ALF code</em> tab shows what that lowering looks like for your program.</p>
+<h3>Abstract execution</h3>
+<p>Abstract execution (AE) runs the program on abstract values, here intervals, instead of concrete numbers. It is a very context-sensitive form of abstract interpretation <b>without widening</b>: every loop iteration is executed separately. When a condition can go both ways, the state is split and both branches continue, each with the condition's information applied (<code>i &lt; n</code> true means <code>n ≥ i+1</code>). While states run, <b>recorders</b> count block executions and loop iterations; at the end, <b>collectors</b> turn those counts into flow facts.</p>
+<p>Because there is no widening, AE gives very precise bounds when it terminates, but it can fail to terminate. Try the "No widening" and "Limits of intervals" examples.</p>
+<h3>Merging</h3>
+<p>Splitting can make the number of states grow exponentially (the "Path explosion" example). SWEET controls this by <b>merging</b> states at chosen program points, joining their intervals. Merged results stay safe but can lose precision; infeasible-pair facts, for instance, need separate paths.</p>
+<h3>Kinds of flow facts in this lab</h3>
+<table class="t"><thead><tr><th>Fact</th><th>Meaning</th></tr></thead><tbody>
+<tr><td>Loop bound per entry</td><td>Iterations each time the loop is entered (context-sensitive).</td></tr>
+<tr><td>Header bound per run</td><td>Total executions of the loop header in one program run. For nested triangular loops this is much tighter than multiplying per-entry bounds.</td></tr>
+<tr><td>Block count bounds</td><td>Lower and upper execution counts for every block, usable directly as IPET constraints.</td></tr>
+<tr><td>Infeasible code</td><td>Blocks that no allowed input reaches.</td></tr>
+<tr><td>Infeasible pairs</td><td>Two blocks that never both run in the same execution.</td></tr>
+</tbody></table>
+<h3>What is simplified here</h3>
+<ul>
+<li>Input language: integer variables, <code>if</code>, <code>while</code>, <code>for</code>, no functions, arrays or pointers. <code>nondet(lo, hi)</code> plays the role of an input annotation.</li>
+<li>One value domain (intervals). SWEET offers more, for example circular linear progressions.</li>
+<li>The ALF printout and the flow-fact notation are readable approximations, not SWEET's exact syntax.</li>
+<li>The time estimate uses unit costs per operation, standing in for SWEET's ALF-level timing model.</li>
+</ul>
+<h3>Further reading</h3>
+<ul>
+<li>J. Gustafsson, A. Ermedahl, C. Sandberg, B. Lisper: <em>Automatic derivation of loop bounds and infeasible paths for WCET analysis using abstract execution</em>, RTSS 2006.</li>
+<li>J. Gustafsson, A. Ermedahl: <em>Merging techniques for faster derivation of WCET flow information using abstract execution</em>.</li>
+<li>A. Ermedahl, J. Gustafsson, B. Lisper: <em>Deriving WCET bounds by abstract execution</em>, WCET workshop 2011.</li>
+<li>B. Lisper: <em>SWEET – a tool for WCET flow analysis</em>, ISoLA 2014.</li>
+</ul>
+</div>`;
+
+  load(0);
+})();
+</script>
+
+</body>
+</html>

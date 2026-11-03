@@ -1,0 +1,1227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+</head>
+<body>
+<title>T-CREST Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="A Patmos-style processor simulator with platin-style WCET analysis.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a two-pane workbench. Program on the left, analysis results on the right; stacks on phones. */
+:root {
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --sunken: #f6f8fa;
+  --ink: #18212c;
+  --muted: #586577;
+  --line: #d5dce4;
+  --accent: #13707b;
+  --accent-ink: #ffffff;
+  --accent-soft: #dcefef;
+  --good: #2b7a4b;
+  --good-soft: #e1f2e7;
+  --warn: #9a5f0c;
+  --warn-soft: #fbefd9;
+  --bad: #b02a1f;
+  --bad-soft: #fbe4e1;
+  --code-ink: #23303e;
+  --f-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --r: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161c; --surface: #19202a; --sunken: #141a22; --ink: #e2e8ee; --muted: #95a3b3; --line: #2b3542;
+    --accent: #4fb8c1; --accent-ink: #0d1a1c; --accent-soft: #17343a;
+    --good: #6cc792; --good-soft: #163324; --warn: #e3a64a; --warn-soft: #3a2c14; --bad: #f0857a; --bad-soft: #3d1d1a;
+    --code-ink: #d6dee7; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161c; --surface: #19202a; --sunken: #141a22; --ink: #e2e8ee; --muted: #95a3b3; --line: #2b3542;
+  --accent: #4fb8c1; --accent-ink: #0d1a1c; --accent-soft: #17343a;
+  --good: #6cc792; --good-soft: #163324; --warn: #e3a64a; --warn-soft: #3a2c14; --bad: #f0857a; --bad-soft: #3d1d1a;
+  --code-ink: #d6dee7; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.5; }
+a { color: var(--accent); }
+.wrap { max-width: 1440px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 48px; }
+header.top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 20px; padding-block: 22px 16px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+header.top h1 { font-family: var(--f-display); font-weight: 600; font-size: 28px; letter-spacing: -0.01em; margin: 0; }
+header.top h1 span { color: var(--accent); }
+header.top p { margin: 0; color: var(--muted); max-width: 70ch; flex: 1 1 360px; }
+header.top nav { display: flex; gap: 14px; font-size: 14px; }
+.grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 18px; align-items: start; }
+@media (max-width: 960px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); min-width: 0; }
+.panel > .ph { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.panel > .pb { padding: 14px; }
+.eyebrow { font-family: var(--f-display); font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+label.ctl { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+select, input[type=number] { font: 14px var(--f-body); color: var(--ink); background: var(--sunken); border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; min-width: 0; }
+input[type=number] { width: 6.5em; font-family: var(--f-mono); }
+button { font: 600 14px var(--f-body); border-radius: 4px; padding: 7px 14px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+button.ghost { background: transparent; color: var(--accent); }
+button:hover { filter: brightness(1.08); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.editor { position: relative; }
+textarea.code { display: block; width: 100%; min-height: 460px; resize: vertical; border: 0; border-radius: 0 0 var(--r) var(--r); background: var(--sunken); color: var(--code-ink); font: 13.5px/1.55 var(--f-mono); padding: 12px 14px; tab-size: 4; white-space: pre; overflow: auto; }
+textarea.code:focus { outline: none; box-shadow: inset 0 0 0 2px var(--accent-soft); }
+.blurb { font-size: 14px; color: var(--muted); padding: 10px 14px; border-bottom: 1px solid var(--line); margin: 0; }
+.err { margin: 12px 14px; padding: 10px 12px; border-left: 3px solid var(--bad); background: var(--bad-soft); color: var(--ink); font-size: 14px; border-radius: 0 4px 4px 0; }
+.note { padding: 10px 12px; border-left: 3px solid var(--warn); background: var(--warn-soft); font-size: 14px; border-radius: 0 4px 4px 0; margin: 0 0 12px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); }
+.stat { background: var(--surface); padding: 10px 14px; min-width: 0; }
+.stat .k { font-size: 12px; color: var(--muted); }
+.stat .v { font: 600 22px var(--f-display); font-variant-numeric: tabular-nums; }
+.stat .s { font-size: 12px; color: var(--muted); }
+.tabs { display: flex; gap: 2px; overflow-x: auto; padding: 0 8px; border-bottom: 1px solid var(--line); }
+.tabs button { background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--muted); padding: 10px 10px 8px; white-space: nowrap; font-weight: 500; }
+.tabs button[aria-selected=true] { color: var(--ink); border-bottom-color: var(--accent); }
+.tabpane { padding: 14px; min-width: 0; }
+pre.out { margin: 0; font: 12.5px/1.55 var(--f-mono); color: var(--code-ink); background: var(--sunken); border: 1px solid var(--line); border-radius: 4px; padding: 12px; overflow-x: auto; white-space: pre; }
+.tscroll { overflow-x: auto; }
+table.t { border-collapse: collapse; width: 100%; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+table.t th { text-align: left; font-weight: 600; font-size: 12px; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.t td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.t td.n, table.t th.n { text-align: right; }
+table.t code, .mono { font-family: var(--f-mono); font-size: 12.5px; }
+.chip { display: inline-block; font: 600 12px var(--f-body); padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--ink); white-space: nowrap; }
+.chip.good { background: var(--good-soft); color: var(--good); }
+.chip.warn { background: var(--warn-soft); color: var(--warn); }
+.chip.bad { background: var(--bad-soft); color: var(--bad); }
+.prose { max-width: 72ch; }
+.prose h3 { font-family: var(--f-display); font-size: 18px; margin: 22px 0 6px; text-wrap: balance; }
+.prose h3:first-child { margin-top: 0; }
+.prose p, .prose li { color: var(--ink); }
+.prose code { font-family: var(--f-mono); font-size: 13px; background: var(--sunken); padding: 0 4px; border-radius: 3px; }
+.prose table.t { margin: 8px 0 14px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+.bb { border: 1px solid var(--line); border-radius: 4px; background: var(--sunken); min-width: 0; }
+.bb .h { display: flex; justify-content: space-between; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line); font: 600 13px var(--f-mono); }
+.bb .h small { font: 12px var(--f-body); color: var(--muted); }
+.bb .c { padding: 6px 10px; font: 12.5px/1.55 var(--f-mono); color: var(--code-ink); overflow-x: auto; white-space: pre; }
+.bb .f { padding: 6px 10px; border-top: 1px dashed var(--line); font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.bb.dead { border-color: var(--bad); }
+.bb.hot { border-color: var(--accent); }
+.bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; min-width: 60px; }
+.bar i { display: block; height: 100%; background: var(--accent); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+.opts { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; }
+footer.f { margin-top: 26px; font-size: 13px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* T-CREST Lab uses a cobalt accent to tell it apart from SWEET Lab */
+:root { --accent: #3b55c0; --accent-ink: #ffffff; --accent-soft: #e2e7fa; --meas: #8a63c4; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --accent: #8ea2f2; --accent-ink: #10152a; --accent-soft: #232c4d; --meas: #c3a2f0; } }
+:root[data-theme="dark"] { --accent: #8ea2f2; --accent-ink: #10152a; --accent-soft: #232c4d; --meas: #c3a2f0; }
+.compare { padding: 14px; border-bottom: 1px solid var(--line); }
+.compare .row { display: grid; grid-template-columns: 7.5em minmax(0, 1fr) 5.5em; gap: 10px; align-items: center; font-size: 13px; margin: 4px 0; }
+.compare .track { height: 14px; background: var(--sunken); border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+.compare .track i { display: block; height: 100%; }
+.compare .v { text-align: right; font: 600 13px var(--f-mono); font-variant-numeric: tabular-nums; }
+.cfgopts { padding: 10px 14px; border-top: 1px solid var(--line); }
+.cfgopts summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+.cfgopts .opts { margin-top: 10px; }
+.tr td { font-family: var(--f-mono); font-size: 12px; white-space: nowrap; }
+.tr td.note { white-space: normal; font-family: var(--f-body); color: var(--muted); min-width: 16em; }
+.regs { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 4px; font: 12.5px var(--f-mono); }
+.regs span { background: var(--sunken); border: 1px solid var(--line); border-radius: 3px; padding: 2px 6px; }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>T-CREST <span>Lab</span></h1>
+    <p>Run Patmos-style assembly on a cycle-level model of the processor, then compare the measured time with a static WCET bound computed the way platin does: per-block costs, loop bounds and an IPET linear program.</p>
+    <nav><a href="sweet.html">← SWEET Lab</a></nav>
+  </header>
+
+  <div class="grid">
+    <section class="panel" aria-label="Program">
+      <div class="ph">
+        <label class="ctl">Example
+          <select id="ex"></select>
+        </label>
+        <span style="flex:1"></span>
+        <button id="run" type="button">Run and analyse</button>
+      </div>
+      <p class="blurb" id="blurb"></p>
+      <div class="editor"><textarea id="src" class="code" spellcheck="false" aria-label="Patmos-style assembly"></textarea></div>
+      <details class="cfgopts" open>
+        <summary>Hardware configuration</summary>
+        <div class="opts">
+          <label class="ctl">Main memory latency (cycles)<input id="memLatency" type="number" min="1" max="200"></label>
+          <label class="ctl">Data cache lines<input id="dcacheSets" type="number" min="1" max="256"></label>
+          <label class="ctl">Method cache blocks<input id="mcBlocks" type="number" min="1" max="256"></label>
+          <label class="ctl">Words per M$ block<input id="mcBlockWords" type="number" min="1" max="64"></label>
+          <label class="ctl">Stack cache (words)<input id="scWords" type="number" min="1" max="1024"></label>
+        </div>
+      </details>
+    </section>
+
+    <section class="panel" aria-label="Results">
+      <div id="errbox"></div>
+      <div class="compare" id="compare"></div>
+      <div class="stats" id="stats"></div>
+      <div class="tabs" role="tablist" id="tabs"></div>
+      <div class="tabpane" id="pane"></div>
+    </section>
+  </div>
+
+  <footer class="f">A teaching model written for this lab. Instruction syntax, latencies and cache models follow the ideas of Patmos and platin from the T-CREST project in simplified form; cycle counts are not those of the real hardware.</footer>
+</div>
+
+<script>
+// ============================================================================
+// T-CREST Lab core: Patmos-style assembly -> cycle-level simulator
+//                   + platin-style static WCET analysis (CFG, loops, IPET/LP)
+// A didactic model of ideas from T-CREST (Patmos, method cache, stack cache,
+// scratchpad, platin). Timing numbers are configurable, not the real hardware.
+// ============================================================================
+(function (global) {
+  'use strict';
+
+  const DEFAULTS = {
+    memLatency: 21,     // cycles for one main-memory transfer (a cache line or a single word)
+    dcacheSets: 4,      // direct-mapped data cache: number of lines
+    dcacheLine: 4,      // words per line
+    mcBlocks: 16,       // method cache: number of blocks
+    mcBlockWords: 4,    // words per method cache block
+    scWords: 16,        // stack cache size in words
+  };
+
+  // ------------------------------------------------------------- assembler
+  const R = (s, ln) => {
+    const m = /^r(\d+)$/.exec(s);
+    if (!m || +m[1] > 31) throw new Error('Line ' + ln + ': expected a register r0..r31, found "' + s + '"');
+    return +m[1];
+  };
+  const P = (s, ln) => {
+    const m = /^(!?)p([0-7])$/.exec(s);
+    if (!m) throw new Error('Line ' + ln + ': expected a predicate p0..p7, found "' + s + '"');
+    return { n: +m[2], neg: !!m[1] };
+  };
+  const IMM = (s, ln) => {
+    if (!/^-?\d+$/.test(s)) throw new Error('Line ' + ln + ': expected a number, found "' + s + '"');
+    return parseInt(s, 10);
+  };
+  const MEM = (s, ln) => {
+    const m = /^\[\s*(r\d+)\s*(?:([+-])\s*(\d+))?\s*\]$/.exec(s);
+    if (!m) throw new Error('Line ' + ln + ': expected a memory operand like [r1 + 4], found "' + s + '"');
+    return { base: R(m[1], ln), off: m[2] === '-' ? -+m[3] : +(m[3] || 0) };
+  };
+
+  const ALU = { add: (a, b) => a + b, sub: (a, b) => a - b, and: (a, b) => a & b, or: (a, b) => a | b, xor: (a, b) => a ^ b, sl: (a, b) => a << b, sr: (a, b) => a >>> b, mul: (a, b) => Math.imul(a, b) };
+  const CMP = { eq: (a, b) => a === b, neq: (a, b) => a !== b, lt: (a, b) => a < b, le: (a, b) => a <= b, ult: (a, b) => (a >>> 0) < (b >>> 0) };
+  const LOADS = { lwc: 'dcache', lwm: 'main', lwl: 'spm', lws: 'stack' };
+  const STORES = { swc: 'dcache', swm: 'main', swl: 'spm', sws: 'stack' };
+
+  function parseInst(text, ln) {
+    let t = text.trim();
+    let guard = { n: 0, neg: false };
+    const g = /^\(\s*(!?p[0-7])\s*\)\s*(.*)$/.exec(t);
+    if (g) { guard = P(g[1], ln); t = g[2]; }
+    const sp = t.indexOf(' ');
+    const op = (sp < 0 ? t : t.slice(0, sp)).toLowerCase();
+    const rest = sp < 0 ? '' : t.slice(sp + 1).trim();
+    const I = { op, guard, text: text.trim(), line: ln, reads: [], writes: [], preadsExtra: [] };
+    const lhsrhs = () => {
+      const k = rest.indexOf('=');
+      if (k < 0) throw new Error('Line ' + ln + ': "' + op + '" needs the form  dst = src');
+      return [rest.slice(0, k).trim(), rest.slice(k + 1).split(',').map((x) => x.trim())];
+    };
+    let m;
+    if (op === 'nop' || op === 'halt' || op === 'retnd') { I.kind = op; }
+    else if (op === 'li') { const [d, [v]] = lhsrhs(); I.kind = 'li'; I.rd = R(d, ln); I.imm = IMM(v, ln); }
+    else if (op === 'mov') { const [d, [s]] = lhsrhs(); I.kind = 'alu'; I.fn = 'add'; I.rd = R(d, ln); I.rs = R(s, ln); I.rt = 0; }
+    else if ((m = /^(add|sub|and|or|xor|sl|sr|mul)(i?)$/.exec(op))) {
+      const [d, a] = lhsrhs();
+      if (a.length !== 2) throw new Error('Line ' + ln + ': "' + op + '" needs two source operands');
+      I.kind = 'alu'; I.fn = m[1]; I.rd = R(d, ln); I.rs = R(a[0], ln);
+      if (m[2]) I.imm = IMM(a[1], ln); else I.rt = R(a[1], ln);
+    }
+    else if ((m = /^cmp(i?)(eq|neq|lt|le|ult)$/.exec(op))) {
+      const [d, a] = lhsrhs();
+      I.kind = 'cmp'; I.fn = m[2]; I.pd = P(d, ln).n; I.rs = R(a[0], ln);
+      if (m[1]) I.imm = IMM(a[1], ln); else I.rt = R(a[1], ln);
+    }
+    else if ((m = /^p(and|or|xor|mov|not)$/.exec(op))) {
+      const [d, a] = lhsrhs();
+      I.kind = 'pred'; I.fn = m[1]; I.pd = P(d, ln).n; I.ps = P(a[0], ln); I.pt = a[1] ? P(a[1], ln) : null;
+    }
+    else if (LOADS[op]) { const [d, [a]] = lhsrhs(); I.kind = 'load'; I.space = LOADS[op]; I.rd = R(d, ln); I.mem = MEM(a, ln); }
+    else if (STORES[op]) {
+      const k = rest.indexOf('=');
+      if (k < 0) throw new Error('Line ' + ln + ': store needs the form  [rX + off] = rY');
+      I.kind = 'store'; I.space = STORES[op]; I.mem = MEM(rest.slice(0, k).trim(), ln); I.rt = R(rest.slice(k + 1).trim(), ln);
+    }
+    else if (op === 'br' || op === 'brnd') { I.kind = op; I.target = rest; if (!rest) throw new Error('Line ' + ln + ': branch needs a label'); }
+    else if (op === 'callnd') { I.kind = 'call'; I.target = rest; if (!rest) throw new Error('Line ' + ln + ': callnd needs a function name'); }
+    else if (op === 'sres' || op === 'sfree') { I.kind = op; I.n = IMM(rest, ln); if (I.n < 0) throw new Error('Line ' + ln + ': negative size'); }
+    else throw new Error('Line ' + ln + ': unknown instruction "' + op + '"');
+    // register read/write sets (for hazards)
+    if (I.rs != null) I.reads.push(I.rs);
+    if (I.rt != null) I.reads.push(I.rt);
+    if (I.mem) I.reads.push(I.mem.base);
+    if (I.rd != null) I.writes.push(I.rd);
+    return I;
+  }
+
+  function assemble(src) {
+    const lines = src.split('\n');
+    const bundles = [];
+    const labels = {};
+    const funcs = [];
+    const bounds = {}; // bundle index -> bound
+    const mem = {}, spm = {};
+    let pendingBound = null, cur = null;
+    lines.forEach((raw, i) => {
+      const ln = i + 1;
+      let s = raw.replace(/(#|\/\/).*$/, '').trim();
+      if (!s) return;
+      let lm;
+      while ((lm = /^([A-Za-z_]\w*):\s*(.*)$/.exec(s))) {
+        if (labels[lm[1]] != null) throw new Error('Line ' + ln + ': label "' + lm[1] + '" defined twice');
+        labels[lm[1]] = bundles.length;
+        s = lm[2];
+      }
+      if (!s) return;
+      if (s[0] === '.') {
+        const parts = s.split(/\s+/);
+        const d = parts[0];
+        if (d === '.func') {
+          if (!parts[1]) throw new Error('Line ' + ln + ': .func needs a name');
+          if (cur) cur.end = bundles.length;
+          cur = { name: parts[1], start: bundles.length, end: null, line: ln };
+          if (labels[parts[1]] != null) throw new Error('Line ' + ln + ': name "' + parts[1] + '" already used');
+          labels[parts[1]] = bundles.length;
+          funcs.push(cur);
+        } else if (d === '.loopbound') {
+          pendingBound = IMM(parts[1], ln);
+          if (pendingBound < 0) throw new Error('Line ' + ln + ': loop bound must be >= 0');
+        } else if (d === '.mem' || d === '.spm') {
+          const addr = IMM(parts[1], ln);
+          parts.slice(2).forEach((v, k) => { (d === '.mem' ? mem : spm)[addr + k] = IMM(v, ln); });
+        } else throw new Error('Line ' + ln + ': unknown directive "' + d + '"');
+        return;
+      }
+      if (!cur) throw new Error('Line ' + ln + ': instructions must follow a ".func name" line');
+      let insts;
+      if (s[0] === '{') {
+        if (!/\}\s*$/.test(s)) throw new Error('Line ' + ln + ': a bundle "{ a ; b }" must close on the same line');
+        insts = s.slice(1, s.lastIndexOf('}')).split(';').map((x) => x.trim()).filter(Boolean).map((x) => parseInst(x, ln));
+        if (insts.length > 2) throw new Error('Line ' + ln + ': Patmos issues at most two instructions per bundle');
+        if (insts.length === 2) {
+          if (insts[1].kind.match(/^(br|brnd|call|retnd|halt|sres|sfree)$/)) throw new Error('Line ' + ln + ': control-flow and stack-control instructions must be in the first slot');
+          if ((insts[0].kind === 'load' || insts[0].kind === 'store') && (insts[1].kind === 'load' || insts[1].kind === 'store')) throw new Error('Line ' + ln + ': only one memory access per bundle');
+        }
+      } else insts = [parseInst(s, ln)];
+      if (pendingBound != null) { bounds[bundles.length] = pendingBound; pendingBound = null; }
+      bundles.push({ idx: bundles.length, insts, line: ln, fn: funcs.length - 1, text: insts.map((x) => x.text).join(' ; ') });
+    });
+    if (cur) cur.end = bundles.length;
+    if (!funcs.length) throw new Error('Program has no ".func main"');
+    if (!funcs.find((f) => f.name === 'main')) throw new Error('Program needs a function called main');
+    for (const f of funcs) if (f.start === f.end) throw new Error('Function ' + f.name + ' is empty');
+    // resolve targets
+    for (const b of bundles) for (const I of b.insts) {
+      if (I.kind === 'br' || I.kind === 'brnd') {
+        if (labels[I.target] == null) throw new Error('Line ' + I.line + ': unknown label "' + I.target + '"');
+        I.t = labels[I.target];
+        if (bundles[I.t] && bundles[I.t].fn !== b.fn) throw new Error('Line ' + I.line + ': branch leaves its function; use callnd');
+      }
+      if (I.kind === 'call') {
+        const f = funcs.findIndex((x) => x.name === I.target);
+        if (f < 0) throw new Error('Line ' + I.line + ': unknown function "' + I.target + '"');
+        I.f = f;
+      }
+    }
+    // function sizes in words (each instruction is one 32-bit word here)
+    for (const f of funcs) {
+      f.words = 0;
+      for (let i = f.start; i < f.end; i++) f.words += bundles[i].insts.length;
+    }
+    return { bundles, labels, funcs, bounds, mem, spm };
+  }
+
+  // ----------------------------------------------------------------- CFG
+  const ctrlOf = (b) => b.insts[0];
+  function buildCFG(prog) {
+    const { bundles, funcs } = prog;
+    const leaders = new Set();
+    for (const f of funcs) leaders.add(f.start);
+    for (const lbl of Object.values(prog.labels)) leaders.add(lbl);
+    for (const b of bundles) {
+      const I = ctrlOf(b);
+      if (I.kind === 'br') {
+        for (let k = 1; k <= 2; k++) {
+          const d = bundles[b.idx + k];
+          if (!d || d.fn !== b.fn) throw new Error('Line ' + I.line + ': br needs two delay-slot bundles after it inside the function');
+          if (/^(br|brnd|call|retnd|halt)$/.test(ctrlOf(d).kind)) throw new Error('Line ' + d.line + ': a branch delay slot cannot contain another control-flow instruction');
+        }
+        leaders.add(b.idx + 3);
+      }
+      if (/^(brnd|call|retnd|halt)$/.test(I.kind)) leaders.add(b.idx + 1);
+    }
+    // a delay slot that is also a leader is an error
+    for (const b of bundles) if (ctrlOf(b).kind === 'br') for (let k = 1; k <= 2; k++) if (leaders.has(b.idx + k) && Object.values(prog.labels).includes(b.idx + k))
+      throw new Error('Line ' + bundles[b.idx + k].line + ': a label points into a branch delay slot');
+    const blocks = [];
+    const blockOf = new Array(bundles.length);
+    for (const f of funcs) {
+      f.blocks = [];
+      let curB = null;
+      for (let i = f.start; i < f.end; i++) {
+        if (leaders.has(i) || !curB) {
+          // delay slots never start a block (checked above), so this is safe
+          curB = { id: blocks.length, fn: funcs.indexOf(f), start: i, end: i, succ: [], pred: [], label: null };
+          blocks.push(curB); f.blocks.push(curB.id);
+        }
+        curB.end = i + 1;
+        blockOf[i] = curB.id;
+        // a br ends the block after its delay slots: keep the slots inside
+        const I = ctrlOf(bundles[i]);
+        if (I.kind === 'br') { for (let k = 1; k <= 2; k++) { blockOf[i + k] = curB.id; } curB.end = i + 3; i += 2; curB.brAt = i - 2; }
+      }
+    }
+    const labelAt = {};
+    for (const [n, i] of Object.entries(prog.labels)) labelAt[i] = n;
+    for (const b of blocks) {
+      b.label = labelAt[b.start] || null;
+      b.name = 'BB' + b.id + (b.label ? ' ' + b.label : '');
+    }
+    // edges
+    const edges = [];
+    const addEdge = (from, to, kind) => {
+      const e = { id: edges.length, from, to, kind };
+      edges.push(e);
+      if (to != null) blocks[to].pred.push(e.id);
+      blocks[from].succ.push(e.id);
+      return e;
+    };
+    for (const b of blocks) {
+      const f = funcs[b.fn];
+      const lastIdx = b.brAt != null ? b.brAt : b.end - 1;
+      const I = ctrlOf(bundles[lastIdx]);
+      const uncond = I.guard.n === 0 && !I.guard.neg;
+      const fall = () => {
+        if (b.end >= f.end) throw new Error('Line ' + bundles[b.end - 1].line + ': control falls off the end of function ' + f.name + ' (add retnd or halt)');
+        addEdge(b.id, blockOf[b.end], 'fall');
+      };
+      if (I.kind === 'br' || I.kind === 'brnd') {
+        addEdge(b.id, blockOf[I.t], I.kind === 'brnd' ? 'taken-nd' : 'taken');
+        if (!uncond) fall();
+      } else if (I.kind === 'call') {
+        b.call = I.f;
+        if (!uncond) throw new Error('Line ' + I.line + ': predicated calls are not supported in this lab');
+        fall();
+        edges[edges.length - 1].kind = 'call-return';
+      } else if (I.kind === 'retnd' || I.kind === 'halt') {
+        if (!uncond) throw new Error('Line ' + I.line + ': predicated ' + I.kind + ' is not supported in this lab');
+        if (I.kind === 'halt' && f.name !== 'main') throw new Error('Line ' + I.line + ': halt is only allowed in main');
+        if (I.kind === 'retnd' && f.name === 'main') throw new Error('Line ' + I.line + ': main must end with halt, not retnd');
+        addEdge(b.id, null, 'exit');
+      } else fall();
+    }
+    return { blocks, edges, blockOf };
+  }
+
+  // ------------------------------------------------- dominators and loops
+  function findLoops(prog, cfg) {
+    const loops = [];
+    for (const f of prog.funcs) {
+      const ids = f.blocks;
+      const entry = ids[0];
+      const all = new Set(ids);
+      const dom = new Map(ids.map((i) => [i, i === entry ? new Set([i]) : new Set(ids)]));
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const b of ids) {
+          if (b === entry) continue;
+          let nd = null;
+          for (const eid of cfg.blocks[b].pred) {
+            const p = cfg.edges[eid].from;
+            if (!all.has(p)) continue;
+            nd = nd ? new Set([...nd].filter((x) => dom.get(p).has(x))) : new Set(dom.get(p));
+          }
+          nd = nd || new Set();
+          nd.add(b);
+          if (nd.size !== dom.get(b).size) { dom.set(b, nd); changed = true; }
+        }
+      }
+      // back edges
+      const byHeader = new Map();
+      for (const b of ids) for (const eid of cfg.blocks[b].succ) {
+        const e = cfg.edges[eid];
+        if (e.to == null) continue;
+        if (dom.get(b).has(e.to)) {
+          if (!byHeader.has(e.to)) byHeader.set(e.to, []);
+          byHeader.get(e.to).push(eid);
+        }
+      }
+      for (const [h, backs] of byHeader) {
+        const body = new Set([h]);
+        const stack = backs.map((eid) => cfg.edges[eid].from);
+        while (stack.length) {
+          const x = stack.pop();
+          if (body.has(x)) continue;
+          body.add(x);
+          for (const eid of cfg.blocks[x].pred) stack.push(cfg.edges[eid].from);
+        }
+        const entries = cfg.blocks[h].pred.filter((eid) => !backs.includes(eid));
+        const hb = cfg.blocks[h];
+        let bound = null;
+        for (let i = hb.start; i < hb.end; i++) if (prog.bounds[i] != null) bound = prog.bounds[i];
+        loops.push({ id: loops.length, header: h, backs, entries, body, bound, fn: f.name, name: hb.label || 'BB' + h });
+        hb.loop = loops.length - 1;
+      }
+    }
+    // check annotations that are not on a header
+    for (const [i, v] of Object.entries(prog.bounds)) {
+      const b = cfg.blocks[cfg.blockOf[i]];
+      if (b.loop == null) throw new Error('Line ' + prog.bundles[i].line + ': .loopbound ' + v + ' is not at a loop header');
+    }
+    return loops;
+  }
+
+  // ------------------------------------------------------- timing model
+  function instCostWorst(I, cfgT) {
+    if (I.kind === 'load' || I.kind === 'store') {
+      if (I.space === 'main' || I.space === 'dcache') return cfgT.memLatency; // data cache: always-miss assumption; stores are write-through
+    }
+    return 0;
+  }
+  function blockTiming(prog, cfg, loops, T, mc) {
+    const { bundles } = prog;
+    // registers that are the target of a load in the last bundle of some block (per function)
+    const tailLoads = prog.funcs.map(() => new Set());
+    for (const b of cfg.blocks) {
+      const last = bundles[b.end - 1];
+      for (const I of last.insts) if (I.kind === 'load') for (const r of I.writes) tailLoads[b.fn].add(r);
+    }
+    for (const b of cfg.blocks) {
+      const parts = { issue: 0, memory: 0, stall: 0, stack: 0 };
+      let prevLoad = new Set();
+      for (let i = b.start; i < b.end; i++) {
+        const bun = bundles[i];
+        parts.issue += 1;
+        const reads = new Set(bun.insts.flatMap((I) => I.reads.filter((r) => r !== 0)));
+        if (i === b.start) { if ([...reads].some((r) => tailLoads[b.fn].has(r))) parts.stall += 1; }
+        else if ([...reads].some((r) => prevLoad.has(r))) parts.stall += 1;
+        prevLoad = new Set();
+        for (const I of bun.insts) {
+          parts.memory += instCostWorst(I, T);
+          if (I.kind === 'load') for (const r of I.writes) prevLoad.add(r);
+          if ((I.kind === 'sres' || I.kind === 'sfree') && !mc.stackFits) parts.stack += T.memLatency + I.n;
+        }
+      }
+      b.cost = parts.issue + parts.memory + parts.stall + parts.stack;
+      b.parts = parts;
+    }
+    for (const e of cfg.edges) {
+      e.cost = 0; e.parts = {};
+      if (e.kind === 'taken-nd') { e.cost = 2; e.parts.branch = 2; }
+      if (e.kind === 'call-return') {
+        const caller = cfg.blocks[e.from].fn, callee = cfg.blocks[e.from].call;
+        e.parts.callret = 6; e.cost = 6;
+        if (!mc.persistent) {
+          const m = mcMissCost(prog.funcs[callee], T) + mcMissCost(prog.funcs[caller], T);
+          e.parts.methodCache = m; e.cost += m;
+        }
+      }
+    }
+  }
+  const mcBlocksOf = (f, T) => Math.ceil(f.words / T.mcBlockWords);
+  const mcMissCost = (f, T) => T.memLatency + f.words; // burst setup + one cycle per word
+
+  // ---------------------------------------------- call graph properties
+  function callGraph(prog, cfg) {
+    const calls = prog.funcs.map(() => new Set());
+    for (const b of cfg.blocks) if (b.call != null) calls[b.fn].add(b.call);
+    const main = prog.funcs.findIndex((f) => f.name === 'main');
+    const reach = new Set();
+    const state = new Map();
+    const visit = (f, path) => {
+      if (state.get(f) === 1) throw new Error('Recursion (' + path.concat(prog.funcs[f].name).join(' → ') + ') is not supported: platin also needs recursion bounds');
+      if (state.get(f) === 2) return;
+      state.set(f, 1); reach.add(f);
+      for (const g of calls[f]) visit(g, path.concat(prog.funcs[f].name));
+      state.set(f, 2);
+    };
+    visit(main, []);
+    // stack depth: sum of sres in a function + deepest callee chain
+    const sres = prog.funcs.map((f) => {
+      let n = 0;
+      for (let i = f.start; i < f.end; i++) for (const I of prog.bundles[i].insts) if (I.kind === 'sres') n += I.n;
+      return n;
+    });
+    const depthMemo = new Map();
+    const depth = (f) => {
+      if (depthMemo.has(f)) return depthMemo.get(f);
+      let d = 0;
+      for (const g of calls[f]) d = Math.max(d, depth(g));
+      depthMemo.set(f, sres[f] + d);
+      return sres[f] + d;
+    };
+    return { calls, main, reach: [...reach], maxStack: depth(main), sres };
+  }
+
+  // ------------------------------------------------ simplex (maximize)
+  // maximize c·x  s.t.  A x <= b, x >= 0, with b >= 0 (origin feasible)
+  function simplexMax(c, A, b) {
+    const m = A.length, n = c.length;
+    const W = n + m + 1;
+    const T = A.map((row, i) => {
+      const r = new Float64Array(W);
+      for (let j = 0; j < n; j++) r[j] = row[j] || 0;
+      r[n + i] = 1; r[W - 1] = b[i];
+      return r;
+    });
+    const z = new Float64Array(W);
+    for (let j = 0; j < n; j++) z[j] = -c[j];
+    const basis = Array.from({ length: m }, (_, i) => n + i);
+    const EPS = 1e-9;
+    for (let iter = 0; iter < 50000; iter++) {
+      let col = -1;
+      for (let j = 0; j < W - 1; j++) if (z[j] < -EPS) { col = j; break; } // Bland's rule
+      if (col < 0) break;
+      let row = -1, best = Infinity;
+      for (let i = 0; i < m; i++) if (T[i][col] > EPS) {
+        const ratio = T[i][W - 1] / T[i][col];
+        if (ratio < best - EPS || (Math.abs(ratio - best) <= EPS && basis[i] < basis[row])) { best = ratio; row = i; }
+      }
+      if (row < 0) return { status: 'unbounded', col };
+      const pr = T[row], pv = pr[col];
+      for (let j = 0; j < W; j++) pr[j] /= pv;
+      for (let i = 0; i < m; i++) if (i !== row) {
+        const f = T[i][col];
+        if (Math.abs(f) > EPS) for (let j = 0; j < W; j++) T[i][j] -= f * pr[j];
+      }
+      const f = z[col];
+      for (let j = 0; j < W; j++) z[j] -= f * pr[j];
+      basis[row] = col;
+    }
+    const x = new Array(n).fill(0);
+    basis.forEach((v, i) => { if (v < n) x[v] = T[i][W - 1]; });
+    return { status: 'optimal', value: z[W - 1], x };
+  }
+
+  // ------------------------------------------------------------ IPET
+  function ipet(prog, cfg, loops, cg, T, mc) {
+    // variables: one per CFG edge, plus one "entry" variable per function
+    const nE = cfg.edges.length;
+    const entryVar = prog.funcs.map((_, i) => nE + i);
+    const nV = nE + prog.funcs.length;
+    const names = cfg.edges.map((e) => 'x' + e.id).concat(prog.funcs.map((f) => 'e_' + f.name));
+    const rows = [], rhs = [], human = [];
+    const inVars = (bid) => {
+      const b = cfg.blocks[bid];
+      const v = b.pred.map((eid) => eid);
+      if (prog.funcs[b.fn].start === b.start) v.push(entryVar[b.fn]);
+      return v;
+    };
+    const addLe = (coef, r, text) => {
+      const row = new Array(nV).fill(0);
+      for (const [v, k] of coef) row[v] += k;
+      rows.push(row); rhs.push(r); if (text) human.push(text);
+    };
+    const term = (coef) => coef.map(([v, k]) => (k === 1 ? '' : k === -1 ? '-' : k + '·') + names[v]).join(' + ').replace(/\+ -/g, '- ');
+    const addEq = (coef, text) => { addLe(coef, 0); addLe(coef.map(([v, k]) => [v, -k]), 0); human.push(text || term(coef) + ' = 0'); };
+    // program is started once
+    addLe([[entryVar[cg.main], 1]], 1, 'e_main = 1   (the program runs once)');
+    // unreachable functions are never entered
+    for (let f = 0; f < prog.funcs.length; f++) {
+      if (f === cg.main) continue;
+      const callers = cfg.blocks.filter((b) => b.call === f);
+      const coef = [[entryVar[f], 1]];
+      for (const b of callers) for (const v of inVars(b.id)) coef.push([v, -1]);
+      addEq(coef, 'e_' + prog.funcs[f].name + ' = ' + (callers.length ? callers.map((b) => '#' + 'BB' + b.id).join(' + ') + '   (each call site enters ' + prog.funcs[f].name + ')' : '0   (never called)'));
+    }
+    // flow conservation
+    for (const b of cfg.blocks) {
+      const coef = inVars(b.id).map((v) => [v, 1]).concat(b.succ.map((eid) => [eid, -1]));
+      addEq(coef, 'BB' + b.id + ':  ' + inVars(b.id).map((v) => names[v]).join(' + ') + ' = ' + b.succ.map((eid) => names[eid]).join(' + '));
+    }
+    // loop bounds
+    for (const L of loops) {
+      if (L.bound == null) throw new Error('Loop at ' + L.name + ' (function ' + L.fn + ', line ' + prog.bundles[cfg.blocks[L.header].start].line + ') has no .loopbound annotation. Without a bound the IPET problem is unbounded, so platin could not compute a WCET either.');
+      const coef = L.backs.map((eid) => [eid, 1]);
+      const ent = L.entries.slice();
+      if (prog.funcs[cfg.blocks[L.header].fn].start === cfg.blocks[L.header].start) ent.push(entryVar[cfg.blocks[L.header].fn]);
+      for (const v of ent) coef.push([v, -L.bound]);
+      addLe(coef, 0);
+      human.push(L.backs.map((e) => names[e]).join(' + ') + ' ≤ ' + L.bound + ' · (' + ent.map((v) => names[v]).join(' + ') + ')   (loop ' + L.name + ', .loopbound ' + L.bound + ')');
+    }
+    // objective
+    const c = new Array(nV).fill(0);
+    for (const b of cfg.blocks) for (const v of inVars(b.id)) c[v] += b.cost;
+    for (const e of cfg.edges) c[e.id] += e.cost;
+    const sol = simplexMax(c, rows, rhs);
+    if (sol.status !== 'optimal') throw new Error('The IPET problem is unbounded: some loop is missing a bound.');
+    let constant = 0;
+    const constParts = [];
+    if (mc.persistent) {
+      for (const f of cg.reach) { const k = mcMissCost(prog.funcs[f], T); constant += k; constParts.push(prog.funcs[f].name + ' ' + k); }
+    } else {
+      const k = mcMissCost(prog.funcs[cg.main], T); constant += k; constParts.push('initial load of main ' + k);
+    }
+    const counts = cfg.blocks.map((b) => inVars(b.id).reduce((s, v) => s + sol.x[v], 0));
+    const edgeCounts = cfg.edges.map((e) => sol.x[e.id]);
+    const integral = sol.x.every((v) => Math.abs(v - Math.round(v)) < 1e-6);
+    const objective = cfg.blocks.map((b) => b.cost + '·#BB' + b.id).concat(cfg.edges.filter((e) => e.cost).map((e) => e.cost + '·' + names[e.id]));
+    return { wcet: Math.round((sol.value + constant) * 1000) / 1000, lp: sol.value, constant, constParts, counts, edgeCounts, integral, human, objective, nVars: nV, nRows: rows.length };
+  }
+
+  // ------------------------------------------------------- simulator
+  function simulate(prog, cfg, loops, T, opts) {
+    opts = Object.assign({ maxBundles: 2000000, traceLimit: 400 }, opts || {});
+    const { bundles, funcs } = prog;
+    const R = new Int32Array(32);
+    const Pr = [true, false, false, false, false, false, false, false];
+    const mem = Object.assign({}, prog.mem), spm = Object.assign({}, prog.spm), stackMem = {};
+    const rd = (m, a) => (m[a] | 0);
+    // data cache (direct mapped, write-through, no write-allocate)
+    const dc = new Array(T.dcacheSets).fill(-1);
+    // method cache (FIFO of whole functions)
+    let mcList = [];
+    const mcUsed = () => mcList.reduce((s, f) => s + mcBlocksOf(funcs[f], T), 0);
+    const stats = { cycles: 0, bundles: 0, issue: 0, stalls: 0, dcHits: 0, dcMiss: 0, mainAcc: 0, memCycles: 0, mcHits: 0, mcMiss: 0, mcCycles: 0, scSpill: 0, scCycles: 0, branchCycles: 0, callCycles: 0 };
+    const trace = [];
+    const warnings = [];
+    function mcAccess(f) {
+      if (mcList.includes(f)) { stats.mcHits++; return 0; }
+      const need = mcBlocksOf(funcs[f], T);
+      if (need > T.mcBlocks) throw new Error('Function ' + funcs[f].name + ' (' + need + ' blocks) does not fit into the method cache (' + T.mcBlocks + ' blocks)');
+      while (mcUsed() + need > T.mcBlocks) mcList.shift();
+      mcList.push(f);
+      stats.mcMiss++;
+      const c = mcMissCost(funcs[f], T);
+      stats.mcCycles += c;
+      return c;
+    }
+    // stack cache: occupancy model with spill/fill to main memory
+    let scDepth = 0, scSpilled = 0;
+    const counts = new Array(cfg.blocks.length).fill(0);
+    const loopIt = loops.map(() => 0), loopMax = loops.map(() => 0);
+    const main = funcs.findIndex((f) => f.name === 'main');
+    let pc = funcs[main].start;
+    const callStack = [];
+    let pending = null;
+    let lastLoad = new Set();
+    let prevBid = null;
+    const warnedLoop = loops.map(() => false);
+    stats.cycles += mcAccess(main);
+    let halted = false;
+    while (!halted) {
+      if (stats.bundles >= opts.maxBundles) throw new Error('Simulation stopped after ' + opts.maxBundles.toLocaleString('en') + ' bundles (endless loop?)');
+      const bun = bundles[pc];
+      if (!bun) throw new Error('Program counter left the program at bundle ' + pc);
+      const bid = cfg.blockOf[pc];
+      if (cfg.blocks[bid].start === pc) {
+        counts[bid]++;
+        // loop bound monitoring: an arrival at a header over a back edge is one more iteration
+        const L = cfg.blocks[bid].loop;
+        if (L != null) {
+          const lp = loops[L];
+          if (prevBid != null && lp.backs.some((eid) => cfg.edges[eid].from === prevBid)) loopIt[L]++;
+          else loopIt[L] = 0;
+          loopMax[L] = Math.max(loopMax[L], loopIt[L]);
+          if (lp.bound != null && loopIt[L] > lp.bound && !warnedLoop[L]) {
+            warnedLoop[L] = true;
+            warnings.push('Loop ' + lp.name + ' ran more than its .loopbound of ' + lp.bound + ' iterations. The annotation is wrong, so the computed WCET bound is not safe.');
+          }
+        }
+      }
+      let cyc = 1, note = [];
+      stats.issue++;
+      // load-use interlock
+      const reads = bun.insts.flatMap((I) => (guardOk(I) ? I.reads.filter((r) => r !== 0) : []));
+      if (reads.some((r) => lastLoad.has(r))) { cyc++; stats.stalls++; note.push('load-use stall'); }
+      lastLoad = new Set();
+      let nextPc = null, setPending = false, retFrom = null;
+      // read operands of both slots first (bundle semantics), then write
+      const writesR = [], writesP = [];
+      function guardOk(I) { const v = Pr[I.guard.n]; return I.guard.neg ? !v : v; }
+      for (const I of bun.insts) {
+        if (!guardOk(I)) { if (I.kind !== 'nop') note.push('(' + (I.guard.neg ? '!' : '') + 'p' + I.guard.n + ') off: ' + I.op); continue; }
+        const a = I.rs != null ? R[I.rs] : 0;
+        const b = I.rt != null ? R[I.rt] : I.imm;
+        switch (I.kind) {
+          case 'nop': break;
+          case 'li': writesR.push([I.rd, I.imm]); break;
+          case 'alu': writesR.push([I.rd, ALU[I.fn](a, I.imm != null ? I.imm : R[I.rt])]); break;
+          case 'cmp': writesP.push([I.pd, CMP[I.fn](a, I.imm != null ? I.imm : R[I.rt])]); break;
+          case 'pred': {
+            const pv = (p) => (p.neg ? !Pr[p.n] : Pr[p.n]);
+            const x = pv(I.ps), y = I.pt ? pv(I.pt) : false;
+            const r = I.fn === 'and' ? x && y : I.fn === 'or' ? x || y : I.fn === 'xor' ? x !== y : I.fn === 'not' ? !x : x;
+            writesP.push([I.pd, r]); break;
+          }
+          case 'load': {
+            const addr = R[I.mem.base] + I.mem.off;
+            let v;
+            if (I.space === 'spm') v = rd(spm, addr);
+            else if (I.space === 'stack') v = rd(stackMem, addr);
+            else v = rd(mem, addr);
+            if (I.space === 'dcache') {
+              const line = Math.floor(addr / T.dcacheLine), set = ((line % T.dcacheSets) + T.dcacheSets) % T.dcacheSets;
+              if (dc[set] === line) { stats.dcHits++; note.push('D$ hit @' + addr); }
+              else { dc[set] = line; stats.dcMiss++; cyc += T.memLatency; stats.memCycles += T.memLatency; note.push('D$ miss @' + addr + ' +' + T.memLatency); }
+            } else if (I.space === 'main') { stats.mainAcc++; cyc += T.memLatency; stats.memCycles += T.memLatency; note.push('main mem @' + addr + ' +' + T.memLatency); }
+            writesR.push([I.rd, v]);
+            lastLoad.add(I.rd);
+            break;
+          }
+          case 'store': {
+            const addr = R[I.mem.base] + I.mem.off;
+            const v = R[I.rt];
+            if (I.space === 'spm') spm[addr] = v;
+            else if (I.space === 'stack') stackMem[addr] = v;
+            else {
+              mem[addr] = v; stats.mainAcc++; cyc += T.memLatency; stats.memCycles += T.memLatency;
+              note.push((I.space === 'dcache' ? 'write-through' : 'main mem') + ' @' + addr + ' +' + T.memLatency);
+            }
+            break;
+          }
+          case 'sres': {
+            const newSp = Math.max(0, scDepth + I.n - T.scWords);
+            const spill = newSp - scSpilled;
+            if (spill > 0) { const c = T.memLatency + spill; cyc += c; stats.scSpill += spill; stats.scCycles += c; note.push('stack spill ' + spill + 'w +' + c); }
+            scSpilled = Math.max(scSpilled, newSp); scDepth += I.n; break;
+          }
+          case 'sfree': {
+            scDepth = Math.max(0, scDepth - I.n);
+            const keep = Math.max(0, scDepth - T.scWords);
+            const fill = scSpilled - keep;
+            if (fill > 0) { const c = T.memLatency + fill; cyc += c; stats.scCycles += c; note.push('stack fill ' + fill + 'w +' + c); }
+            scSpilled = keep; break;
+          }
+          case 'br': pending = { t: I.t, n: 2 }; setPending = true; note.push('branch taken → ' + I.target + ' after 2 delay slots'); break;
+          case 'brnd': nextPc = I.t; cyc += 2; stats.branchCycles += 2; note.push('non-delayed branch → ' + I.target + ' +2'); break;
+          case 'call': {
+            callStack.push({ ret: pc + 1, fn: bun.fn, callBlock: bid });
+            cyc += 3; stats.callCycles += 3;
+            const m = mcAccess(I.f); cyc += m;
+            note.push('call ' + I.target + ' +3' + (m ? ', M$ miss +' + m : ', M$ hit'));
+            nextPc = funcs[I.f].start; break;
+          }
+          case 'retnd': {
+            const fr = callStack.pop();
+            cyc += 3; stats.callCycles += 3;
+            const m = mcAccess(fr.fn); cyc += m;
+            note.push('return to ' + funcs[fr.fn].name + ' +3' + (m ? ', M$ miss +' + m : ', M$ hit'));
+            nextPc = fr.ret; retFrom = fr.callBlock; break;
+          }
+          case 'halt': halted = true; note.push('halt'); break;
+        }
+      }
+      for (const [r, v] of writesR) if (r !== 0) R[r] = v | 0;
+      for (const [p, v] of writesP) if (p !== 0) Pr[p] = !!v;
+      stats.cycles += cyc; stats.bundles++;
+      if (trace.length < opts.traceLimit) trace.push({ cycle: stats.cycles - cyc, pc, block: bid, text: bun.text, cyc, note: note.join('; ') });
+      if (halted) break;
+      prevBid = retFrom != null ? retFrom : bun.insts[0].kind === 'call' && guardOk(bun.insts[0]) ? null : bid;
+      if (nextPc != null) pc = nextPc;
+      else if (pending && !setPending) {
+        pending.n--;
+        if (pending.n === 0) { pc = pending.t; pending = null; } else pc++;
+      } else pc++;
+    }
+    stats.mcCyclesTotal = stats.mcCycles;
+    return { stats, counts, trace, regs: Array.from(R), preds: Pr.slice(), warnings, loopMax, spm, mem };
+  }
+
+  // ------------------------------------------------------------ driver
+  function analyze(src, cfgT) {
+    const T = Object.assign({}, DEFAULTS, cfgT || {});
+    const prog = assemble(src);
+    const cfg = buildCFG(prog);
+    const loops = findLoops(prog, cfg);
+    const cg = callGraph(prog, cfg);
+    const totalMcBlocks = cg.reach.reduce((s, f) => s + mcBlocksOf(prog.funcs[f], T), 0);
+    for (const f of cg.reach) if (mcBlocksOf(prog.funcs[f], T) > T.mcBlocks) throw new Error('Function ' + prog.funcs[f].name + ' needs ' + mcBlocksOf(prog.funcs[f], T) + ' method cache blocks but the cache has only ' + T.mcBlocks);
+    const mc = { persistent: totalMcBlocks <= T.mcBlocks, totalMcBlocks, stackFits: cg.maxStack <= T.scWords, maxStack: cg.maxStack };
+    blockTiming(prog, cfg, loops, T, mc);
+    const wc = ipet(prog, cfg, loops, cg, T, mc);
+    let sim = null, simError = null;
+    try { sim = simulate(prog, cfg, loops, T); } catch (e) { simError = e.message; }
+    return { T, prog, cfg, loops, cg, mc, wc, sim, simError };
+  }
+
+  const api = { analyze, assemble, DEFAULTS, simplexMax };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else global.TcrestCore = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+// Example programs for the T-CREST Lab (Patmos-style assembly)
+(function (global) {
+  const EX = [
+    {
+      id: 'spm-vs-cache',
+      title: 'Scratchpad vs. data cache',
+      blurb: 'The same array is summed twice. Scratchpad loads (lwl) have a fixed latency, so that loop is costed exactly. Data-cache loads (lwc) are assumed to miss, so that loop is overestimated. Compare the two loop bodies in the block table.',
+      src: `# Sum 8 values twice: from the scratchpad, then through the data cache.
+.spm 0   5 3 8 1 9 2 7 4
+.mem 64  5 3 8 1 9 2 7 4
+
+.func main
+        li    r1 = 0              # i
+        li    r2 = 0              # sum
+        li    r3 = 8              # n
+spm_loop:
+.loopbound 8
+        cmplt p1 = r1, r3
+        (!p1) br spm_done         # delayed branch: the next 2 bundles always execute
+        nop
+        nop
+        lwl   r4 = [r1 + 0]       # scratchpad: fixed latency
+        addi  r1 = r1, 1
+        add   r2 = r2, r4
+        br    spm_loop
+        nop
+        nop
+spm_done:
+        li    r1 = 0
+        li    r5 = 0
+cache_loop:
+.loopbound 8
+        cmplt p1 = r1, r3
+        (!p1) br cache_done
+        nop
+        nop
+        lwc   r4 = [r1 + 64]      # data cache: static analysis assumes a miss
+        addi  r1 = r1, 1
+        add   r5 = r5, r4
+        br    cache_loop
+        nop
+        nop
+cache_done:
+        halt
+`,
+    },
+    {
+      id: 'branchy',
+      title: 'Data-dependent branch',
+      blurb: 'Finds the maximum of an array with a conditional branch. The measured time depends on the data; the WCET bound must assume the slow path on every iteration.',
+      src: `# Maximum of 8 values with a data-dependent branch.
+.mem 0   4 9 2 7 5 1 8 3
+
+.func main
+        li    r1 = 0              # i
+        li    r2 = 0              # max
+        li    r3 = 8              # n
+loop:
+.loopbound 8
+        cmplt p1 = r1, r3
+        (!p1) br done
+        nop
+        nop
+        lwm   r4 = [r1 + 0]       # uncached main-memory load: fixed latency
+        nop                       # fill the load delay
+        cmplt p2 = r2, r4         # new maximum?
+        (!p2) brnd skip           # non-delayed branch, +2 cycles when taken
+        mov   r2 = r4             # slow path: update and count
+        addi  r6 = r6, 1
+        addi  r7 = r1, 0
+        addi  r8 = r8, 2
+skip:
+        addi  r1 = r1, 1
+        br    loop
+        nop
+        nop
+done:
+        halt
+`,
+    },
+    {
+      id: 'single-path',
+      title: 'Single-path code',
+      blurb: 'The same computation as "Data-dependent branch", rewritten with predication. Both paths are always issued, so every run takes the same time and the bound equals the measurement.',
+      src: `# Maximum of 8 values, single-path version: no data-dependent branch.
+.mem 0   4 9 2 7 5 1 8 3
+
+.func main
+        li    r1 = 0
+        li    r2 = 0
+        li    r3 = 8
+loop:
+.loopbound 8
+        cmplt p1 = r1, r3
+        (!p1) br done             # the loop branch depends only on the counter
+        nop
+        nop
+        lwm   r4 = [r1 + 0]
+        nop
+        cmplt p2 = r2, r4
+        (p2)  mov  r2 = r4        # predicated: issued every time, takes effect only if p2
+        { (p2) addi r6 = r6, 1 ; (p2) addi r7 = r1, 0 }   # dual-issue bundle
+        (p2)  addi r8 = r8, 2
+        addi  r1 = r1, 1
+        br    loop
+        nop
+        nop
+done:
+        halt
+`,
+    },
+    {
+      id: 'method-cache',
+      title: 'Method and stack cache',
+      blurb: 'main calls two functions in a loop. Shrink the method cache below the code size and every call and return becomes a miss; shrink the stack cache and frames spill to memory.',
+      src: `# Calls in a loop: the method cache holds whole functions,
+# the stack cache holds the stack frames reserved with sres.
+.func main
+        sres  4                   # reserve 4 words of stack cache
+        li    r10 = 0
+        li    r11 = 4
+mloop:
+.loopbound 4
+        cmplt p1 = r10, r11
+        (!p1) br mdone
+        nop
+        nop
+        callnd scale              # non-delayed call: +3 cycles, method cache lookup
+        callnd accumulate
+        addi  r10 = r10, 1
+        br    mloop
+        nop
+        nop
+mdone:
+        sfree 4
+        halt
+
+.func scale
+        sres  6
+        sws   [r0 + 0] = r10      # stack-cache store: fixed latency
+        sl    r1 = r10, r11
+        add   r1 = r1, r10
+        addi  r1 = r1, 3
+        sub   r1 = r1, r11
+        lws   r2 = [r0 + 0]
+        add   r1 = r1, r2
+        sfree 6
+        retnd
+
+.func accumulate
+        sres  6
+        add   r12 = r12, r1
+        addi  r13 = r13, 1
+        xor   r14 = r12, r13
+        and   r14 = r14, r11
+        or    r15 = r15, r14
+        sfree 6
+        retnd
+`,
+    },
+    {
+      id: 'wrong-bound',
+      title: 'A wrong flow fact',
+      blurb: 'The annotation claims 5 iterations but the loop runs 10. The analysis trusts the annotation and returns a bound that is below the measured time. Flow facts must be correct.',
+      src: `# The loop runs 10 times, but the annotation says 5.
+.func main
+        li    r1 = 0
+        li    r3 = 10
+loop:
+.loopbound 5                      # WRONG: should be 10
+        cmplt p1 = r1, r3
+        (!p1) br done
+        nop
+        nop
+        addi  r1 = r1, 1
+        br    loop
+        nop
+        nop
+done:
+        halt
+`,
+    },
+  ];
+  if (typeof module !== 'undefined' && module.exports) module.exports = EX;
+  else global.TCREST_EXAMPLES = EX;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+(function () {
+  'use strict';
+  const EX = window.TCREST_EXAMPLES;
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const KEYS = ['memLatency', 'dcacheSets', 'mcBlocks', 'mcBlockWords', 'scWords'];
+  const TABS = [['blocks', 'Blocks and costs'], ['ipet', 'IPET problem'], ['trace', 'Pipeline trace'], ['state', 'Final state'], ['isa', 'Instruction set'], ['about', 'How T-CREST works']];
+  let tab = 'blocks', last = null;
+  try { const t = localStorage.getItem('tcrest-tab'); if (TABS.some((x) => x[0] === t)) tab = t; } catch (e) {}
+  KEYS.forEach((k) => { $(k).value = TcrestCore.DEFAULTS[k]; $(k).addEventListener('change', run); });
+  EX.forEach((e, i) => { const o = document.createElement('option'); o.value = i; o.textContent = e.title; $('ex').appendChild(o); });
+  function load(i) { $('src').value = EX[i].src; $('blurb').textContent = EX[i].blurb; run(); }
+  $('ex').addEventListener('change', () => load(+$('ex').value));
+  $('run').addEventListener('click', run);
+  $('src').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); run(); }
+    if (e.key === 'Tab') { e.preventDefault(); const t = e.target, s = t.selectionStart; t.value = t.value.slice(0, s) + '        ' + t.value.slice(t.selectionEnd); t.selectionStart = t.selectionEnd = s + 8; }
+  });
+  function renderTabs() {
+    $('tabs').innerHTML = TABS.map(([k, n]) => '<button type="button" role="tab" id="tab-' + k + '" aria-selected="' + (k === tab) + '">' + n + '</button>').join('');
+    TABS.forEach(([k]) => $('tab-' + k).addEventListener('click', () => { tab = k; try { localStorage.setItem('tcrest-tab', k); } catch (e) {} renderTabs(); renderPane(); }));
+  }
+  function run() {
+    $('errbox').innerHTML = '';
+    const T = {};
+    KEYS.forEach((k) => { const v = parseInt($(k).value, 10); T[k] = isFinite(v) && v > 0 ? v : TcrestCore.DEFAULTS[k]; });
+    try { last = TcrestCore.analyze($('src').value, T); }
+    catch (e) { last = null; $('errbox').innerHTML = '<div class="err"><strong>Cannot analyse:</strong> ' + esc(e.message) + '</div>'; }
+    renderSummary(); renderTabs(); renderPane();
+  }
+  const fmt = (x) => (Math.round(x * 100) / 100).toLocaleString('en');
+  function renderSummary() {
+    if (!last) { $('compare').innerHTML = ''; $('stats').innerHTML = ''; return; }
+    const w = last.wc.wcet, m = last.sim ? last.sim.stats.cycles : null;
+    const top = Math.max(w, m || 0, 1);
+    const safe = m == null || w >= m;
+    const ratio = m ? w / m : null;
+    let html = '<div class="row"><span>WCET bound</span><span class="track"><i style="width:' + (100 * w / top) + '%;background:var(--accent)"></i></span><span class="v">' + fmt(w) + '</span></div>';
+    html += '<div class="row"><span>Measured run</span><span class="track"><i style="width:' + (100 * (m || 0) / top) + '%;background:var(--meas)"></i></span><span class="v">' + (m == null ? '—' : fmt(m)) + '</span></div>';
+    let verdict = '';
+    if (last.simError) verdict = '<span class="chip bad">Simulation failed</span> ' + esc(last.simError);
+    else if (!safe) verdict = '<span class="chip bad">Unsafe bound</span> The measured run is longer than the bound. A flow fact is wrong.';
+    else if (w === m) verdict = '<span class="chip good">Exact</span> The bound equals the measured time: this program has a single execution time.';
+    else verdict = '<span class="chip warn">Overestimate ' + fmt((ratio - 1) * 100) + '%</span> The bound is safe. The gap comes from assumptions the analysis must make for all inputs and cache states.';
+    html += '<p style="margin:8px 0 0;font-size:14px">' + verdict + '</p>';
+    if (last.sim) for (const wmsg of last.sim.warnings) html += '<div class="note" style="margin-top:10px">' + esc(wmsg) + '</div>';
+    $('compare').innerHTML = html;
+    const s = last.sim ? last.sim.stats : null;
+    const items = [
+      ['Bundles issued', s ? s.bundles.toLocaleString('en') : '—', s ? s.stalls + ' load-use stall' + (s.stalls === 1 ? '' : 's') : ''],
+      ['Data cache', s ? s.dcHits + ' hit / ' + s.dcMiss + ' miss' : '—', 'analysis: every lwc misses'],
+      ['Method cache', s ? s.mcMiss + ' miss' : '—', last.mc.persistent ? 'all ' + last.mc.totalMcBlocks + ' blocks fit: one miss per function' : 'code needs ' + last.mc.totalMcBlocks + ' blocks: every call misses'],
+      ['Stack cache', s ? (s.scSpill ? s.scSpill + ' words spilled' : 'no spills') : '—', 'max depth ' + last.mc.maxStack + ' of ' + last.T.scWords + ' words'],
+      ['IPET', last.wc.nVars + ' variables', last.wc.nRows + ' rows, ' + (last.wc.integral ? 'integral solution' : 'fractional LP solution')],
+    ];
+    $('stats').innerHTML = items.map(([k, v, sub]) => '<div class="stat"><div class="k">' + k + '</div><div class="v" style="font-size:18px">' + v + '</div><div class="s">' + sub + '</div></div>').join('');
+  }
+  function renderPane() {
+    const P = $('pane');
+    if (tab === 'about') { P.innerHTML = ABOUT; return; }
+    if (tab === 'isa') { P.innerHTML = ISA; return; }
+    if (!last) { P.innerHTML = '<p class="prose">Fix the error in the program to see results here.</p>'; return; }
+    const { prog, cfg, wc, sim, loops } = last;
+    if (tab === 'blocks') {
+      const contrib = cfg.blocks.map((b, i) => wc.counts[i] * b.cost);
+      const maxC = Math.max(1, ...contrib);
+      let h = '<p class="prose" style="margin-top:0">Each basic block gets a worst-case cost from the low-level model. IPET then picks execution counts that maximise the total time while respecting the control flow and the loop bounds. "Measured" counts come from the simulator run.</p>';
+      h += '<div class="tscroll"><table class="t"><thead><tr><th>Block</th><th>Function</th><th>Bundles</th><th class="n">Cost</th><th>Cost breakdown</th><th class="n">WCET count</th><th class="n">Measured</th><th>Share of bound</th></tr></thead><tbody>';
+      cfg.blocks.forEach((b, i) => {
+        const p = b.parts;
+        const parts = ['issue ' + p.issue, p.memory ? 'memory ' + p.memory : '', p.stall ? 'stall ' + p.stall : '', p.stack ? 'stack cache ' + p.stack : ''].filter(Boolean).join(' · ');
+        const L = b.loop != null ? loops[b.loop] : null;
+        const diff = sim && Math.abs(sim.counts[i] - wc.counts[i]) > 1e-6;
+        h += '<tr><td><code>' + esc(b.name) + '</code>' + (L ? ' <span class="chip">loop ≤ ' + L.bound + '</span>' : '') + '</td><td>' + esc(prog.funcs[b.fn].name) + '</td><td class="mono">' + (b.end - b.start) + '</td><td class="n">' + b.cost + '</td><td>' + parts + '</td><td class="n">' + fmt(wc.counts[i]) + '</td><td class="n"' + (diff ? ' style="color:var(--warn);font-weight:600"' : '') + '>' + (sim ? sim.counts[i] : '—') + '</td><td><div class="bar"><i style="width:' + (100 * contrib[i] / maxC) + '%"></i></div></td></tr>';
+      });
+      h += '</tbody></table></div>';
+      const ce = cfg.edges.filter((e) => e.cost);
+      if (ce.length || wc.constant) {
+        h += '<h4 class="eyebrow" style="margin:18px 0 6px">Costs on edges and constants</h4><div class="tscroll"><table class="t"><thead><tr><th>Item</th><th>Reason</th><th class="n">Cost</th><th class="n">WCET count</th></tr></thead><tbody>';
+        for (const e of ce) {
+          const why = Object.entries(e.parts).map(([k, v]) => ({ branch: 'non-delayed branch taken', callret: 'call + return (3 + 3)', methodCache: 'method cache misses on call and return' }[k] + ' ' + v)).join(', ');
+          h += '<tr><td><code>x' + e.id + ': BB' + e.from + ' → ' + (e.to == null ? 'exit' : 'BB' + e.to) + '</code></td><td>' + why + '</td><td class="n">' + e.cost + '</td><td class="n">' + fmt(wc.edgeCounts[e.id]) + '</td></tr>';
+        }
+        if (wc.constant) h += '<tr><td>constant</td><td>method cache loads: ' + esc(wc.constParts.join(', ')) + '</td><td class="n">' + wc.constant + '</td><td class="n">1</td></tr>';
+        h += '</tbody></table></div>';
+      }
+      P.innerHTML = h;
+    } else if (tab === 'ipet') {
+      P.innerHTML = '<div class="prose" style="margin-top:0"><p>platin writes the WCET problem as an integer linear program. Each variable <code>xN</code> counts how often a CFG edge is taken and <code>e_f</code> counts entries into function f. The bound is the maximum of the objective subject to these constraints. This lab solves the LP relaxation with the simplex method; its optimum is a safe upper bound on the ILP optimum, and for these programs it is integral.</p></div>' +
+        '<h4 class="eyebrow" style="margin:12px 0 6px">Objective (maximise)</h4><pre class="out">' + esc(wc.objective.join(' + ') + (wc.constant ? ' + ' + wc.constant : '')) + '</pre>' +
+        '<h4 class="eyebrow" style="margin:14px 0 6px">Constraints</h4><pre class="out">' + esc(wc.human.join('\n')) + '</pre>' +
+        '<h4 class="eyebrow" style="margin:14px 0 6px">Solution</h4><pre class="out">' + esc('WCET bound = ' + fmt(wc.lp) + ' (LP)' + (wc.constant ? ' + ' + wc.constant + ' (constant)' : '') + ' = ' + fmt(wc.wcet) + ' cycles\n' + cfg.edges.map((e) => 'x' + e.id + ' (BB' + e.from + ' → ' + (e.to == null ? 'exit' : 'BB' + e.to) + ', ' + e.kind + ') = ' + fmt(wc.edgeCounts[e.id])).join('\n')) + '</pre>';
+    } else if (tab === 'trace') {
+      if (!sim) { P.innerHTML = '<div class="err">' + esc(last.simError) + '</div>'; return; }
+      P.innerHTML = '<p class="prose" style="margin-top:0">The first ' + sim.trace.length + ' bundles of the run. One bundle issues per cycle; extra cycles come from memory, stalls and control flow. Predicated-off instructions still occupy their slot.</p><div class="tscroll"><table class="t tr"><thead><tr><th class="n">Cycle</th><th class="n">PC</th><th>Block</th><th>Bundle</th><th class="n">+cyc</th><th>Events</th></tr></thead><tbody>' +
+        sim.trace.map((t) => '<tr><td class="n">' + t.cycle + '</td><td class="n">' + t.pc + '</td><td>BB' + t.block + '</td><td>' + esc(t.text) + '</td><td class="n">' + t.cyc + '</td><td class="note">' + esc(t.note) + '</td></tr>').join('') + '</tbody></table></div>';
+    } else if (tab === 'state') {
+      if (!sim) { P.innerHTML = '<div class="err">' + esc(last.simError) + '</div>'; return; }
+      const regs = sim.regs.map((v, i) => (v !== 0 || i < 16 ? '<span>r' + i + ' = ' + v + '</span>' : '')).join('');
+      const preds = sim.preds.map((v, i) => '<span>p' + i + ' = ' + (v ? 1 : 0) + '</span>').join('');
+      const lp = loops.map((L, i) => '<tr><td><code>' + esc(L.name) + '</code></td><td>' + esc(L.fn) + '</td><td class="n">' + L.bound + '</td><td class="n">' + sim.loopMax[i] + '</td><td>' + (sim.loopMax[i] > L.bound ? '<span class="chip bad">violated</span>' : sim.loopMax[i] === L.bound ? '<span class="chip good">tight</span>' : '<span class="chip warn">not reached</span>') + '</td></tr>').join('');
+      P.innerHTML = '<h4 class="eyebrow" style="margin:0 0 6px">Registers</h4><div class="regs">' + regs + '</div><h4 class="eyebrow" style="margin:14px 0 6px">Predicates</h4><div class="regs">' + preds + '</div>' +
+        (lp ? '<h4 class="eyebrow" style="margin:14px 0 6px">Loop bounds: annotation vs. observed</h4><div class="tscroll"><table class="t"><thead><tr><th>Loop</th><th>Function</th><th class="n">.loopbound</th><th class="n">Most iterations seen</th><th></th></tr></thead><tbody>' + lp + '</tbody></table></div>' : '');
+    }
+  }
+  const ISA = `<div class="prose">
+<h3>Program structure</h3>
+<p>Code lives in functions that start with <code>.func name</code>; execution starts in <code>main</code>, which ends with <code>halt</code>. Other functions end with <code>retnd</code>. Comments start with <code>#</code>. Every instruction is one 32-bit word, which sets the function size seen by the method cache.</p>
+<table class="t"><thead><tr><th>Directive</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><code>.loopbound N</code></td><td>Put directly before the first instruction of a loop header: at most N back-edge traversals per loop entry. Corresponds to <code>#pragma loopbound min 0 max N</code> in the Patmos compiler.</td></tr>
+<tr><td><code>.mem A v0 v1 …</code></td><td>Initial words in main memory from address A (word addresses).</td></tr>
+<tr><td><code>.spm A v0 v1 …</code></td><td>Initial words in the data scratchpad.</td></tr>
+</tbody></table>
+<h3>Instructions</h3>
+<p>Any instruction can be guarded by a predicate: <code>(p1) add r1 = r2, r3</code> or <code>(!p1) …</code>. <code>p0</code> is always true and <code>r0</code> is always 0. Two instructions can share a bundle: <code>{ add r1 = r1, r2 ; sub r3 = r3, r4 }</code>.</p>
+<table class="t"><thead><tr><th>Form</th><th>Effect and timing</th></tr></thead><tbody>
+<tr><td><code>add sub and or xor sl sr mul</code> <code>rd = rs, rt</code></td><td>ALU operation; <code>addi</code>, <code>subi</code> … take an immediate. 1 cycle.</td></tr>
+<tr><td><code>li rd = imm</code>, <code>mov rd = rs</code></td><td>Load immediate, copy (pseudo-instructions).</td></tr>
+<tr><td><code>cmpeq cmpneq cmplt cmple cmpult</code> <code>pd = rs, rt</code></td><td>Compare into a predicate; <code>cmpilt pd = rs, imm</code> etc. for immediates.</td></tr>
+<tr><td><code>pand por pxor pmov pnot</code></td><td>Predicate logic, e.g. <code>pand p3 = p1, !p2</code>.</td></tr>
+<tr><td><code>lwc rd = [rs + off]</code></td><td>Load through the direct-mapped data cache. Hit: no extra cycles. Miss: + memory latency. Static analysis assumes a miss.</td></tr>
+<tr><td><code>lwm</code> / <code>lwl</code> / <code>lws</code></td><td>Load bypassing caches from main memory (+ latency), from the scratchpad (no extra cycles), or from the stack cache (no extra cycles).</td></tr>
+<tr><td><code>swc swm swl sws [rs + off] = rt</code></td><td>Stores. Main-memory and data-cache stores are write-through and cost the memory latency.</td></tr>
+<tr><td colspan="2">A loaded register used by the very next bundle causes a 1-cycle stall.</td></tr>
+<tr><td><code>br label</code></td><td>Delayed branch: the two following bundles (delay slots) always execute, then control moves. No penalty.</td></tr>
+<tr><td><code>brnd label</code></td><td>Non-delayed branch: +2 cycles when taken.</td></tr>
+<tr><td><code>callnd f</code>, <code>retnd</code></td><td>Non-delayed call and return: +3 cycles each, plus a method cache lookup of the target function (miss = latency + function size in words).</td></tr>
+<tr><td><code>sres n</code>, <code>sfree n</code></td><td>Reserve and free n words of stack cache. If the cache overflows, words spill to memory and are filled back later.</td></tr>
+<tr><td><code>nop</code>, <code>halt</code></td><td>Do nothing; stop the program.</td></tr>
+</tbody></table>
+</div>`;
+  const ABOUT = `<div class="prose">
+<h3>The T-CREST idea</h3>
+<p>T-CREST was an EU project that built a whole time-predictable multicore platform as open source: the <b>Patmos</b> processor, a network-on-chip, a memory controller, a WCET-aware compiler based on LLVM, and WCET analysis support through the <b>platin</b> toolkit (which also integrates with AbsInt's aiT). Instead of modelling a complex processor in the analysis, the hardware is designed so that the analysis becomes simple and the bound tight.</p>
+<h3>Patmos features you can try here</h3>
+<table class="t"><thead><tr><th>Feature</th><th>Why it helps WCET analysis</th><th>Example</th></tr></thead><tbody>
+<tr><td>Statically scheduled, dual issue</td><td>No dynamic reordering; the time of a bundle sequence follows from the code.</td><td>Single-path code</td></tr>
+<tr><td>Full predication</td><td>Enables <b>single-path</b> code: both sides of a decision are issued, so time does not depend on data.</td><td>Single-path code</td></tr>
+<tr><td>Delayed branches</td><td>Branch cost is fixed and visible in the code.</td><td>all examples</td></tr>
+<tr><td>Method cache</td><td>Caches whole functions; misses happen only at calls and returns, so the analysis only looks at the call graph.</td><td>Method and stack cache</td></tr>
+<tr><td>Stack cache</td><td>Stack data gets its own cache with spills only at <code>sres</code>; spill costs follow from call depth.</td><td>Method and stack cache</td></tr>
+<tr><td>Scratchpad</td><td>Software-managed memory with fixed latency: always predictable.</td><td>Scratchpad vs. data cache</td></tr>
+<tr><td>Split data caches</td><td>The analysis of the general data cache does not have to deal with stack or static data.</td><td>Scratchpad vs. data cache</td></tr>
+</tbody></table>
+<h3>How the WCET bound is computed</h3>
+<ol>
+<li><b>Control-flow graph.</b> Code is cut into basic blocks at labels, after branches (with their delay slots), calls and returns.</li>
+<li><b>Loops and flow facts.</b> Dominators identify natural loops; each must carry a <code>.loopbound</code>. In T-CREST these come from source pragmas and compiler analyses, carried to machine code in PML files, or from a flow-analysis tool such as SWEET.</li>
+<li><b>Low-level analysis.</b> Every block gets a worst-case cost: one cycle per bundle, memory latencies, load-use stalls, and stack-cache spills if the call depth can exceed the cache. Taken non-delayed branches and calls put their cost on edges.</li>
+<li><b>Cache analysis.</b> Data-cache loads are classified as always-miss, the simplest safe choice. The method cache uses a simple persistence argument: if all reachable code fits, each function misses at most once; otherwise every call and return is charged a miss.</li>
+<li><b>IPET.</b> Block and edge costs, flow conservation and loop bounds form a linear program; its maximum is the WCET bound.</li>
+</ol>
+<h3>What is simplified here</h3>
+<ul>
+<li>The instruction syntax is close to Patmos assembly but not identical; delayed calls and returns, the full special-register set and multi-cycle multiply are left out.</li>
+<li>Latencies are configurable round numbers, not those of a real FPGA build. The real data-cache and method-cache analyses are more precise.</li>
+<li>Only one core; the network-on-chip and the memory arbiter are not modelled.</li>
+</ul>
+<h3>Next steps with the real tools</h3>
+<ul>
+<li>All T-CREST repositories, including Patmos, the compiler and the build scripts: <a href="https://github.com/t-crest" target="_blank" rel="noopener">github.com/t-crest</a></li>
+<li>platin: <a href="https://github.com/t-crest/platin" target="_blank" rel="noopener">github.com/t-crest/platin</a></li>
+<li>M. Schoeberl et al.: <em>Patmos: a time-predictable microprocessor</em>, Real-Time Systems 54(2), 2018.</li>
+<li>E. J. Maroun et al.: <em>The Platin multi-target worst-case analysis tool</em>, WCET workshop 2024.</li>
+</ul>
+</div>`;
+  load(0);
+})();
+</script>
+
+</body>
+</html>

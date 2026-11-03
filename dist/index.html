@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+</head>
+<body>
+<title>WCET Labs</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a two-pane workbench. Program on the left, analysis results on the right; stacks on phones. */
+:root {
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --sunken: #f6f8fa;
+  --ink: #18212c;
+  --muted: #586577;
+  --line: #d5dce4;
+  --accent: #13707b;
+  --accent-ink: #ffffff;
+  --accent-soft: #dcefef;
+  --good: #2b7a4b;
+  --good-soft: #e1f2e7;
+  --warn: #9a5f0c;
+  --warn-soft: #fbefd9;
+  --bad: #b02a1f;
+  --bad-soft: #fbe4e1;
+  --code-ink: #23303e;
+  --f-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --r: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161c; --surface: #19202a; --sunken: #141a22; --ink: #e2e8ee; --muted: #95a3b3; --line: #2b3542;
+    --accent: #4fb8c1; --accent-ink: #0d1a1c; --accent-soft: #17343a;
+    --good: #6cc792; --good-soft: #163324; --warn: #e3a64a; --warn-soft: #3a2c14; --bad: #f0857a; --bad-soft: #3d1d1a;
+    --code-ink: #d6dee7; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161c; --surface: #19202a; --sunken: #141a22; --ink: #e2e8ee; --muted: #95a3b3; --line: #2b3542;
+  --accent: #4fb8c1; --accent-ink: #0d1a1c; --accent-soft: #17343a;
+  --good: #6cc792; --good-soft: #163324; --warn: #e3a64a; --warn-soft: #3a2c14; --bad: #f0857a; --bad-soft: #3d1d1a;
+  --code-ink: #d6dee7; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.5; }
+a { color: var(--accent); }
+.wrap { max-width: 1440px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 48px; }
+header.top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 20px; padding-block: 22px 16px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+header.top h1 { font-family: var(--f-display); font-weight: 600; font-size: 28px; letter-spacing: -0.01em; margin: 0; }
+header.top h1 span { color: var(--accent); }
+header.top p { margin: 0; color: var(--muted); max-width: 70ch; flex: 1 1 360px; }
+header.top nav { display: flex; gap: 14px; font-size: 14px; }
+.grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 18px; align-items: start; }
+@media (max-width: 960px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); min-width: 0; }
+.panel > .ph { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.panel > .pb { padding: 14px; }
+.eyebrow { font-family: var(--f-display); font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+label.ctl { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+select, input[type=number] { font: 14px var(--f-body); color: var(--ink); background: var(--sunken); border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; min-width: 0; }
+input[type=number] { width: 6.5em; font-family: var(--f-mono); }
+button { font: 600 14px var(--f-body); border-radius: 4px; padding: 7px 14px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+button.ghost { background: transparent; color: var(--accent); }
+button:hover { filter: brightness(1.08); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.editor { position: relative; }
+textarea.code { display: block; width: 100%; min-height: 460px; resize: vertical; border: 0; border-radius: 0 0 var(--r) var(--r); background: var(--sunken); color: var(--code-ink); font: 13.5px/1.55 var(--f-mono); padding: 12px 14px; tab-size: 4; white-space: pre; overflow: auto; }
+textarea.code:focus { outline: none; box-shadow: inset 0 0 0 2px var(--accent-soft); }
+.blurb { font-size: 14px; color: var(--muted); padding: 10px 14px; border-bottom: 1px solid var(--line); margin: 0; }
+.err { margin: 12px 14px; padding: 10px 12px; border-left: 3px solid var(--bad); background: var(--bad-soft); color: var(--ink); font-size: 14px; border-radius: 0 4px 4px 0; }
+.note { padding: 10px 12px; border-left: 3px solid var(--warn); background: var(--warn-soft); font-size: 14px; border-radius: 0 4px 4px 0; margin: 0 0 12px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); }
+.stat { background: var(--surface); padding: 10px 14px; min-width: 0; }
+.stat .k { font-size: 12px; color: var(--muted); }
+.stat .v { font: 600 22px var(--f-display); font-variant-numeric: tabular-nums; }
+.stat .s { font-size: 12px; color: var(--muted); }
+.tabs { display: flex; gap: 2px; overflow-x: auto; padding: 0 8px; border-bottom: 1px solid var(--line); }
+.tabs button { background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--muted); padding: 10px 10px 8px; white-space: nowrap; font-weight: 500; }
+.tabs button[aria-selected=true] { color: var(--ink); border-bottom-color: var(--accent); }
+.tabpane { padding: 14px; min-width: 0; }
+pre.out { margin: 0; font: 12.5px/1.55 var(--f-mono); color: var(--code-ink); background: var(--sunken); border: 1px solid var(--line); border-radius: 4px; padding: 12px; overflow-x: auto; white-space: pre; }
+.tscroll { overflow-x: auto; }
+table.t { border-collapse: collapse; width: 100%; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+table.t th { text-align: left; font-weight: 600; font-size: 12px; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.t td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.t td.n, table.t th.n { text-align: right; }
+table.t code, .mono { font-family: var(--f-mono); font-size: 12.5px; }
+.chip { display: inline-block; font: 600 12px var(--f-body); padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--ink); white-space: nowrap; }
+.chip.good { background: var(--good-soft); color: var(--good); }
+.chip.warn { background: var(--warn-soft); color: var(--warn); }
+.chip.bad { background: var(--bad-soft); color: var(--bad); }
+.prose { max-width: 72ch; }
+.prose h3 { font-family: var(--f-display); font-size: 18px; margin: 22px 0 6px; text-wrap: balance; }
+.prose h3:first-child { margin-top: 0; }
+.prose p, .prose li { color: var(--ink); }
+.prose code { font-family: var(--f-mono); font-size: 13px; background: var(--sunken); padding: 0 4px; border-radius: 3px; }
+.prose table.t { margin: 8px 0 14px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+.bb { border: 1px solid var(--line); border-radius: 4px; background: var(--sunken); min-width: 0; }
+.bb .h { display: flex; justify-content: space-between; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line); font: 600 13px var(--f-mono); }
+.bb .h small { font: 12px var(--f-body); color: var(--muted); }
+.bb .c { padding: 6px 10px; font: 12.5px/1.55 var(--f-mono); color: var(--code-ink); overflow-x: auto; white-space: pre; }
+.bb .f { padding: 6px 10px; border-top: 1px dashed var(--line); font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.bb.dead { border-color: var(--bad); }
+.bb.hot { border-color: var(--accent); }
+.bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; min-width: 60px; }
+.bar i { display: block; height: 100%; background: var(--accent); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+.opts { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; }
+footer.f { margin-top: 26px; font-size: 13px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+.hero { padding-block: 34px 10px; max-width: 74ch; }
+.hero h1 { font-family: var(--f-display); font-size: clamp(30px, 5vw, 44px); line-height: 1.1; margin: 0 0 12px; letter-spacing: -0.015em; text-wrap: balance; }
+.hero p { color: var(--muted); font-size: 17px; margin: 0; }
+.phases { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; margin: 26px 0; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--surface); }
+.phases div { padding: 14px 16px; border-right: 1px solid var(--line); min-width: 0; }
+.phases div:last-child { border-right: 0; }
+.phases b { display: block; font-family: var(--f-display); font-size: 16px; }
+.phases span { font-size: 13.5px; color: var(--muted); }
+.phases .lab { margin-top: 8px; font: 600 12px var(--f-body); letter-spacing: 0.06em; text-transform: uppercase; }
+.phases .s { color: #13707b; } .phases .t { color: #3b55c0; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .phases .s { color: #4fb8c1; } :root:not([data-theme="light"]) .phases .t { color: #8ea2f2; } }
+:root[data-theme="dark"] .phases .s { color: #4fb8c1; } :root[data-theme="dark"] .phases .t { color: #8ea2f2; }
+@media (max-width: 720px) { .phases { grid-template-columns: minmax(0, 1fr); } .phases div { border-right: 0; border-bottom: 1px solid var(--line); } .phases div:last-child { border-bottom: 0; } }
+.labs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 720px) { .labs { grid-template-columns: minmax(0, 1fr); } }
+.lab-card { display: flex; flex-direction: column; gap: 10px; padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); text-decoration: none; color: var(--ink); min-width: 0; }
+.lab-card:hover { border-color: var(--accent); }
+.lab-card h2 { font-family: var(--f-display); font-size: 24px; margin: 0; }
+.lab-card p { margin: 0; color: var(--muted); }
+.lab-card ul { margin: 0; padding-left: 18px; font-size: 14px; }
+.lab-card .go { font-weight: 600; color: var(--accent); margin-top: auto; }
+.lab-card.t { --accent: #3b55c0; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .lab-card.t { --accent: #8ea2f2; } }
+:root[data-theme="dark"] .lab-card.t { --accent: #8ea2f2; }
+.path { margin-top: 28px; max-width: 74ch; }
+.path h3 { font-family: var(--f-display); font-size: 18px; margin: 0 0 8px; }
+.path ol { margin: 0; padding-left: 20px; }
+.path li { margin-bottom: 6px; }
+</style>
+
+<div class="wrap">
+  <section class="hero">
+    <div class="eyebrow">Timing analysis workbench</div>
+    <h1>Two small labs for learning how WCET tools think</h1>
+    <p>Each lab re-implements the core ideas of an open research tool at a size you can read in an afternoon. Both run entirely in the browser.</p>
+  </section>
+
+  <div class="phases" aria-label="Phases of static WCET analysis">
+    <div><b>1 · Flow analysis</b><span>How often can each part of the program run? Loop bounds, infeasible paths.</span><div class="lab s">SWEET Lab</div></div>
+    <div><b>2 · Low-level analysis</b><span>How long does each piece of code take on this hardware? Pipeline, caches, memory.</span><div class="lab t">T-CREST Lab</div></div>
+    <div><b>3 · Calculation</b><span>Combine counts and costs into one bound, usually with IPET.</span><div class="lab t">T-CREST Lab</div></div>
+  </div>
+
+  <div class="labs">
+    <a class="lab-card" href="sweet.html">
+      <div class="eyebrow">Mälardalen University · flow analysis</div>
+      <h2>SWEET Lab</h2>
+      <p>Abstract execution on a small C-like language, lowered to ALF-style code.</p>
+      <ul>
+        <li>Loop bounds per entry and per program run</li>
+        <li>Infeasible code and infeasible path pairs</li>
+        <li>State splitting, merging and path explosion</li>
+        <li>Why analysis without widening may not terminate</li>
+      </ul>
+      <span class="go">Open SWEET Lab →</span>
+    </a>
+    <a class="lab-card t" href="tcrest.html">
+      <div class="eyebrow">T-CREST project · Patmos and platin</div>
+      <h2>T-CREST Lab</h2>
+      <p>A cycle-level Patmos-style simulator next to a platin-style static WCET analysis.</p>
+      <ul>
+        <li>Delayed branches, predication and dual issue</li>
+        <li>Method cache, stack cache, scratchpad, data cache</li>
+        <li>Per-block costs and the IPET linear program</li>
+        <li>Measured time vs. bound, and unsafe flow facts</li>
+      </ul>
+      <span class="go">Open T-CREST Lab →</span>
+    </a>
+  </div>
+
+  <section class="path">
+    <h3>A suggested order</h3>
+    <ol>
+      <li>SWEET Lab, "Input-dependent loop": read the AE trace and see where the state splits.</li>
+      <li>SWEET Lab, "Triangular nested loops": compare the per-entry and per-run bounds.</li>
+      <li>SWEET Lab, "Path explosion": switch state merging on and off.</li>
+      <li>T-CREST Lab, "Scratchpad vs. data cache": find where the overestimate comes from in the block table.</li>
+      <li>T-CREST Lab, "Data-dependent branch" then "Single-path code": see the bound become exact.</li>
+      <li>T-CREST Lab, "Method and stack cache": lower the cache sizes and watch the costs move onto call edges.</li>
+      <li>T-CREST Lab, "A wrong flow fact": what happens when the flow analysis is wrong.</li>
+    </ol>
+  </section>
+  <footer class="f">These labs are teaching models, not the original tools. See the "How it works" tab in each lab for what is simplified and where to find SWEET and T-CREST.</footer>
+</div>
+
+</body>
+</html>

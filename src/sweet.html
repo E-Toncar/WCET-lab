@@ -1,0 +1,197 @@
+<title>SWEET Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Flow analysis by abstract execution, modelled on the SWEET tool.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/*CSS*/
+.ev { display: grid; grid-template-columns: 4.5em 5.5em minmax(0, 1fr); gap: 2px 10px; font: 12.5px/1.5 var(--f-mono); padding: 4px 0; border-bottom: 1px solid var(--line); }
+.ev .kind { font-family: var(--f-body); font-weight: 600; font-size: 12px; }
+.ev .kind.split { color: var(--warn); } .ev .kind.merge { color: var(--accent); } .ev .kind.end { color: var(--good); } .ev .kind.dead { color: var(--bad); } .ev .kind.exit { color: var(--muted); }
+.ev .body { min-width: 0; overflow-wrap: anywhere; }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>SWEET <span>Lab</span></h1>
+    <p>Write a small C program, then watch abstract execution derive loop bounds, infeasible paths and execution-count facts, the way the SWEET flow-analysis tool does on ALF code.</p>
+    <nav><a href="tcrest.html">T-CREST Lab →</a></nav>
+  </header>
+
+  <div class="grid">
+    <section class="panel" aria-label="Program">
+      <div class="ph">
+        <label class="ctl">Example
+          <select id="ex"></select>
+        </label>
+        <label class="ctl">State merging
+          <select id="merge">
+            <option value="none">None (every path separate)</option>
+            <option value="loop-exit">At loop exits</option>
+            <option value="all">At loop exits and join points</option>
+          </select>
+        </label>
+        <span style="flex:1"></span>
+        <button id="run" type="button">Analyse</button>
+      </div>
+      <p class="blurb" id="blurb"></p>
+      <div class="editor"><textarea id="src" class="code" spellcheck="false" aria-label="mini-C source"></textarea></div>
+    </section>
+
+    <section class="panel" aria-label="Analysis results">
+      <div id="errbox"></div>
+      <div class="stats" id="stats"></div>
+      <div class="tabs" role="tablist" id="tabs"></div>
+      <div class="tabpane" id="pane"></div>
+    </section>
+  </div>
+
+  <footer class="f">A teaching model written for this lab. It follows the ideas published about SWEET (Mälardalen University) but is not SWEET: the input language, the ALF printout and the flow-fact notation are simplified.</footer>
+</div>
+
+<script>
+/*CORE*/
+</script>
+<script>
+(function () {
+  'use strict';
+  const EXAMPLES = [
+    { title: 'Input-dependent loop', blurb: 'n is an input between 1 and 10. Abstract execution splits the state each time the loop test could go either way, and records 1 to 10 iterations.',
+      src: '// n is an input value in [1, 10] (like a SWEET input annotation)\nint n = nondet(1, 10);\nint i = 0;\nint sum = 0;\nwhile (i < n) {\n    sum = sum + i;\n    i++;\n}\n' },
+    { title: 'Triangular nested loops', blurb: 'The inner loop runs i times. Per entry it is bounded by 9, but over the whole run its body executes 45 times, not 10 × 9 = 90. Compare the two kinds of loop bound.',
+      src: 'int s = 0;\nfor (int i = 0; i < 10; i++) {\n    for (int j = 0; j < i; j++) {\n        s += j;\n    }\n}\n' },
+    { title: 'Infeasible paths', blurb: 'x > 3 and x < 2 can never both hold, and y can never be 3. AE finds the dead block and the pair of then-blocks that never run together.',
+      src: 'int x = nondet(0, 5);\nint y = 0;\nif (x > 3) {\n    y = 1;\n}\nif (x < 2) {\n    y = 2;\n}\nif (y == 3) {\n    x = 0;      // dead code\n}\n' },
+    { title: 'Short-circuit condition', blurb: 'The && is lowered into two blocks, as a compiler would. The second test (k*k < a*a) is what actually ends the loop.',
+      src: 'int a = nondet(0, 9);\nint k = 0;\nwhile (k < 20 && k * k < a * a) {\n    k++;\n}\n' },
+    { title: 'Path explosion', blurb: 'Each iteration reads an unknown bit, so there are 2^12 = 4096 paths. Without merging AE follows all of them; merging at join points needs only a handful of steps. Switch the merging option and compare.',
+      src: 'int s = 0;\nfor (int i = 0; i < 12; i++) {\n    int x = nondet(0, 1);\n    if (x == 1) {\n        s = s + 2;\n    } else {\n        s = s + 1;\n    }\n}\n' },
+    { title: 'No widening: unbounded input', blurb: 'n can be up to a million, so AE would have to unroll a million iterations. It stops at its step budget. This is the price of an analysis without widening.',
+      src: 'int n = nondet(0, 1000000);\nint i = 0;\nwhile (i < n) {\n    i++;\n}\n' },
+    { title: 'Limits of intervals', blurb: 'A Collatz-style loop. Intervals cannot express "n is even", so every iteration splits again and the analysis does not converge. Real tools need stronger domains or manual annotations here.',
+      src: 'int n = nondet(1, 20);\nint steps = 0;\nwhile (n != 1) {\n    if (n % 2 == 0) {\n        n = n / 2;\n    } else {\n        n = 3 * n + 1;\n    }\n    steps++;\n}\n' },
+  ];
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const TABS = [['facts', 'Flow facts'], ['blocks', 'Basic blocks'], ['alf', 'ALF code'], ['trace', 'AE trace'], ['about', 'How SWEET works']];
+  let tab = 'facts', last = null;
+  try { const t = localStorage.getItem('sweet-tab'); if (TABS.some((x) => x[0] === t)) tab = t; } catch (e) {}
+
+  EXAMPLES.forEach((e, i) => { const o = document.createElement('option'); o.value = i; o.textContent = e.title; $('ex').appendChild(o); });
+  function load(i) { $('src').value = EXAMPLES[i].src; $('blurb').textContent = EXAMPLES[i].blurb; run(); }
+  $('ex').addEventListener('change', () => load(+$('ex').value));
+  $('merge').addEventListener('change', run);
+  $('run').addEventListener('click', run);
+  $('src').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); run(); }
+    if (e.key === 'Tab') { e.preventDefault(); const t = e.target, s = t.selectionStart; t.value = t.value.slice(0, s) + '    ' + t.value.slice(t.selectionEnd); t.selectionStart = t.selectionEnd = s + 4; }
+  });
+
+  function renderTabs() {
+    $('tabs').innerHTML = TABS.map(([k, n]) => '<button type="button" role="tab" id="tab-' + k + '" aria-selected="' + (k === tab) + '">' + n + '</button>').join('');
+    TABS.forEach(([k]) => $('tab-' + k).addEventListener('click', () => { tab = k; try { localStorage.setItem('sweet-tab', k); } catch (e) {} renderTabs(); renderPane(); }));
+  }
+
+  function run() {
+    $('errbox').innerHTML = '';
+    try {
+      last = SweetCore.analyze($('src').value, { merge: $('merge').value });
+    } catch (e) {
+      last = null;
+      $('errbox').innerHTML = '<div class="err"><strong>Cannot analyse:</strong> ' + esc(e.message) + '</div>';
+    }
+    renderStats(); renderTabs(); renderPane();
+  }
+
+  const iv = (a, b) => (a === b ? String(a) : a + '–' + b);
+  function renderStats() {
+    if (!last) { $('stats').innerHTML = ''; return; }
+    const r = last.res;
+    const loops = r.loops.filter((l) => l.perEntryMax != null).map((l) => l.name + ' ' + iv(l.perEntryMin, l.perEntryMax)).join(', ') || '—';
+    const status = r.aborted ? '<span class="chip bad">Incomplete</span>' : '<span class="chip good">Complete</span>';
+    $('stats').innerHTML = [
+      ['Analysis', status, r.steps.toLocaleString('en') + ' block executions'],
+      ['Loop bounds', '<span style="font-size:17px">' + esc(loops) + '</span>', 'iterations per loop entry'],
+      ['Abstract states', r.splits.toLocaleString('en') + ' splits', r.merges.toLocaleString('en') + ' merges, ' + r.paths.toLocaleString('en') + ' final states'],
+      ['Infeasible blocks', r.infeasible.length ? r.infeasible.join(', ') : '0', r.pairs.length + ' infeasible pair' + (r.pairs.length === 1 ? '' : 's')],
+      ['BCET–WCET estimate', r.time ? iv(r.time[0], r.time[1]) : '—', 'ALF unit-cost model'],
+    ].map(([k, v, s]) => '<div class="stat"><div class="k">' + k + '</div><div class="v">' + v + '</div><div class="s">' + s + '</div></div>').join('');
+  }
+
+  function renderPane() {
+    const P = $('pane');
+    if (tab === 'about') { P.innerHTML = ABOUT; return; }
+    if (!last) { P.innerHTML = '<p class="prose">Fix the error in the program to see results here.</p>'; return; }
+    const r = last.res;
+    const warn = r.aborted ? '<div class="note">' + esc(r.aborted) + '</div>' : '';
+    if (tab === 'facts') {
+      P.innerHTML = warn + loopTable() + '<pre class="out">' + esc(last.facts) + '</pre>';
+    } else if (tab === 'blocks') {
+      const maxC = Math.max(1, ...r.blockCounts.map((c) => c.max));
+      P.innerHTML = warn + '<div class="legend"><span><i style="background:var(--accent)"></i>loop header</span><span><i style="background:var(--bad)"></i>infeasible</span><span>bar = upper bound on executions per run</span></div><div class="cards">' + last.blocks.map((b) => {
+        const c = r.blockCounts[b.id];
+        const dead = c.max === 0;
+        return '<div class="bb' + (dead ? ' dead' : b.header ? ' hot' : '') + '"><div class="h">' + b.name + (b.header ? ' · ' + b.header : '') + '<small>' + esc(b.note) + '</small></div>' +
+          '<div class="c">' + esc(b.stmts.concat([b.term]).join('\n')) + '</div>' +
+          '<div class="f"><span>runs ' + iv(c.min, c.max) + '</span><span>cost ' + b.cost + '</span><span class="bar" style="flex:1"><i style="width:' + (100 * c.max / maxC) + '%"></i></span></div></div>';
+      }).join('') + '</div>';
+    } else if (tab === 'alf') {
+      P.innerHTML = '<p class="prose" style="margin-top:0">SWEET does not read C. A front end translates the program into ALF, a language built for flow analysis: memory is accessed through explicit <code>load</code> and <code>store</code>, and control flow is <code>jump</code> and <code>switch</code> between labels. This is an ALF-flavoured printout of the lowered program, simplified from the real grammar.</p><pre class="out">' + esc(last.alf) + '</pre>';
+    } else if (tab === 'trace') {
+      const evs = r.trace.map((e) => {
+        if (e.k === 'more') return '<div class="ev"><span></span><span></span><span class="body">… trace truncated</span></div>';
+        const row = (kind, at, body) => '<div class="ev"><span class="kind ' + kind + '">' + kind + '</span><span>' + esc(at) + '</span><span class="body">' + body + '</span></div>';
+        if (e.k === 'split') return row('split', e.at, 'state #' + e.s + ' on <b>' + esc(e.cond) + '</b><br>true → ' + e.tB + ' with ' + esc(e.tEnv || '—') + '<br>false → ' + e.fB + ' with ' + esc(e.fEnv || '—'));
+        if (e.k === 'merge') return row('merge', e.at, e.n + ' states joined into #' + e.s + ': ' + esc(e.env));
+        if (e.k === 'exit') return row('exit', e.at, 'state #' + e.s + ' leaves ' + e.L + ' after ' + e.it + ' iteration' + (e.it === 1 ? '' : 's'));
+        if (e.k === 'end') return row('end', 'return', 'state #' + e.s + ' finished: ' + esc(e.env) + ', time ' + iv(e.time[0], e.time[1]));
+        if (e.k === 'dead') return row('dead', e.at, 'state #' + e.s + ' has no feasible successor');
+        return '';
+      }).join('');
+      P.innerHTML = warn + '<p class="prose" style="margin-top:0">Each abstract state carries an interval for every variable. A <b>split</b> happens when a condition can be both true and false; each branch gets the values refined by the condition. A <b>merge</b> joins states at a merge point into one, trading precision for speed.</p>' + (evs || '<p>No events.</p>');
+    }
+  }
+  function loopTable() {
+    const r = last.res;
+    if (!r.loops.length) return '';
+    return '<div class="tscroll"><table class="t" style="margin-bottom:12px"><thead><tr><th>Loop</th><th>Source</th><th>Header</th><th class="n">Iterations per entry</th><th class="n">Header runs per program run</th></tr></thead><tbody>' +
+      r.loops.map((l) => '<tr><td>' + l.name + (l.parent ? ' <span class="chip">in ' + l.parent + '</span>' : '') + '</td><td><code>' + esc(l.text) + '</code> line ' + l.line + '</td><td><code>' + l.header + '</code></td><td class="n">' + (l.perEntryMax == null ? '—' : iv(l.perEntryMin, l.perEntryMax)) + '</td><td class="n">' + (l.totalHeaderMax == null ? '—' : iv(l.totalHeaderMin, l.totalHeaderMax)) + '</td></tr>').join('') + '</tbody></table></div>';
+  }
+
+  const ABOUT = `<div class="prose">
+<h3>Where SWEET fits</h3>
+<p>Static WCET analysis has three phases: a <b>flow analysis</b> that bounds how often each part of the program can run, a <b>low-level analysis</b> that gives each piece of code an execution time on the hardware, and a <b>calculation</b> that combines both into a bound, usually with IPET (an integer linear program over execution counts). SWEET (SWEdish Execution Time tool, Mälardalen University) began as a complete WCET tool and is now mainly a flow-analysis tool. Its results, called <b>flow facts</b>, are meant to be handed to tools such as aiT, RapiTime or platin.</p>
+<h3>ALF</h3>
+<p>SWEET analyses ALF, an intermediate language designed for flow analysis, not C or machine code. Front ends translate C (and machine code, for example in the Bound-T integration) into ALF. The <em>ALF code</em> tab shows what that lowering looks like for your program.</p>
+<h3>Abstract execution</h3>
+<p>Abstract execution (AE) runs the program on abstract values, here intervals, instead of concrete numbers. It is a very context-sensitive form of abstract interpretation <b>without widening</b>: every loop iteration is executed separately. When a condition can go both ways, the state is split and both branches continue, each with the condition's information applied (<code>i &lt; n</code> true means <code>n ≥ i+1</code>). While states run, <b>recorders</b> count block executions and loop iterations; at the end, <b>collectors</b> turn those counts into flow facts.</p>
+<p>Because there is no widening, AE gives very precise bounds when it terminates, but it can fail to terminate. Try the "No widening" and "Limits of intervals" examples.</p>
+<h3>Merging</h3>
+<p>Splitting can make the number of states grow exponentially (the "Path explosion" example). SWEET controls this by <b>merging</b> states at chosen program points, joining their intervals. Merged results stay safe but can lose precision; infeasible-pair facts, for instance, need separate paths.</p>
+<h3>Kinds of flow facts in this lab</h3>
+<table class="t"><thead><tr><th>Fact</th><th>Meaning</th></tr></thead><tbody>
+<tr><td>Loop bound per entry</td><td>Iterations each time the loop is entered (context-sensitive).</td></tr>
+<tr><td>Header bound per run</td><td>Total executions of the loop header in one program run. For nested triangular loops this is much tighter than multiplying per-entry bounds.</td></tr>
+<tr><td>Block count bounds</td><td>Lower and upper execution counts for every block, usable directly as IPET constraints.</td></tr>
+<tr><td>Infeasible code</td><td>Blocks that no allowed input reaches.</td></tr>
+<tr><td>Infeasible pairs</td><td>Two blocks that never both run in the same execution.</td></tr>
+</tbody></table>
+<h3>What is simplified here</h3>
+<ul>
+<li>Input language: integer variables, <code>if</code>, <code>while</code>, <code>for</code>, no functions, arrays or pointers. <code>nondet(lo, hi)</code> plays the role of an input annotation.</li>
+<li>One value domain (intervals). SWEET offers more, for example circular linear progressions.</li>
+<li>The ALF printout and the flow-fact notation are readable approximations, not SWEET's exact syntax.</li>
+<li>The time estimate uses unit costs per operation, standing in for SWEET's ALF-level timing model.</li>
+</ul>
+<h3>Further reading</h3>
+<ul>
+<li>J. Gustafsson, A. Ermedahl, C. Sandberg, B. Lisper: <em>Automatic derivation of loop bounds and infeasible paths for WCET analysis using abstract execution</em>, RTSS 2006.</li>
+<li>J. Gustafsson, A. Ermedahl: <em>Merging techniques for faster derivation of WCET flow information using abstract execution</em>.</li>
+<li>A. Ermedahl, J. Gustafsson, B. Lisper: <em>Deriving WCET bounds by abstract execution</em>, WCET workshop 2011.</li>
+<li>B. Lisper: <em>SWEET – a tool for WCET flow analysis</em>, ISoLA 2014.</li>
+</ul>
+</div>`;
+
+  load(0);
+})();
+</script>
